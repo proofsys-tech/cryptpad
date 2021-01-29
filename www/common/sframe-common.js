@@ -185,15 +185,24 @@ define([
         });
     };
 
-    funcs.getFileSize = function (channelId, cb) {
-        funcs.sendAnonRpcMsg("GET_FILE_SIZE", channelId, function (data) {
-            if (!data) { return void cb("No response"); }
-            if (data.error) { return void cb(data.error); }
-            if (data.response && data.response.length && typeof(data.response[0]) === 'number') {
-                return void cb(void 0, data.response[0]);
-            } else {
-                cb('INVALID_RESPONSE');
-            }
+    funcs.getFileSize = function (channelId, cb, noCache) {
+        nThen(function (waitFor) {
+            if (channelId.length < 48 || noCache) { return; }
+            ctx.cache.getBlobCache(channelId, waitFor(function(err, blob) {
+                if (err) { return; }
+                waitFor.abort();
+                cb(null, blob.length);
+            }));
+        }).nThen(function () {
+            funcs.sendAnonRpcMsg("GET_FILE_SIZE", channelId, function (data) {
+                if (!data) { return void cb("No response"); }
+                if (data.error) { return void cb(data.error); }
+                if (data.response && data.response.length && typeof(data.response[0]) === 'number') {
+                    return void cb(void 0, data.response[0]);
+                } else {
+                    cb('INVALID_RESPONSE');
+                }
+            });
         });
     };
 
@@ -633,6 +642,9 @@ define([
 
     funcs.gotoURL = function (url) { ctx.sframeChan.event('EV_GOTO_URL', url); };
     funcs.openURL = function (url) { ctx.sframeChan.event('EV_OPEN_URL', url); };
+    funcs.getBounceURL = function (url) {
+        return window.location.origin + '/bounce/#' + encodeURIComponent(url);
+    };
     funcs.openUnsafeURL = function (url) {
         var app = ctx.metadataMgr.getPrivateData().app;
         if (app === "sheet") {
@@ -746,7 +758,7 @@ define([
                     window.cryptpadStore._put(k, v, cb);
                     var x = {};
                     x[k] = v;
-                    ctx.sframeChan.event('EV_LOCALSTORE_PUT', x);
+                    ctx.sframeChan.event('EV_LOCALSTORE_PUT', x, {raw:true});
                 };
             });
 
@@ -838,6 +850,14 @@ define([
                 var feedback = privateData.feedbackAllowed;
                 Feedback.init(feedback);
             } catch (e) { Feedback.init(false); }
+
+            if (privateData.secureIframe) {
+                UI.log = function (msg) { ctx.sframeChan.event('EV_ALERTIFY_LOG', msg); };
+                UI.warn = function (msg) { ctx.sframeChan.event('EV_ALERTIFY_WARN', msg); };
+            } else {
+                ctx.sframeChan.on('EV_ALERTIFY_LOG', function (msg) { UI.log(msg); });
+                ctx.sframeChan.on('EV_ALERTIFY_WARN', function (msg) { UI.warn(msg); });
+            }
 
             try {
                 var forbidden = privateData.disabledApp;

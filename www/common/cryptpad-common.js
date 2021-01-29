@@ -453,10 +453,35 @@ define([
         });
     };
 
-    common.getFileSize = function (href, password, cb) {
-        postMessage("GET_FILE_SIZE", {href: href, password: password}, function (obj) {
-            if (obj && obj.error) { return void cb(obj.error); }
-            cb(undefined, obj.size);
+    common.getFileSize = function (href, password, _cb) {
+        var cb = Util.once(Util.mkAsync(_cb));
+        var channel = Hash.hrefToHexChannelId(href, password);
+        var error;
+        Nthen(function (waitFor) {
+            // Blobs can't change, if it's in the cache, use it
+            Cache.getBlobCache(channel, waitFor(function(err, blob) {
+                if (err) { return; }
+                waitFor.abort();
+                cb(null, blob.length);
+            }));
+
+        }).nThen(function (waitFor) {
+            // If it's not in the cache or it's not a blob, try to get the value from the server
+            postMessage("GET_FILE_SIZE", {channel:channel}, waitFor(function (obj) {
+                if (obj && obj.error) {
+                    // If disconnected, try to get the value from the channel cache (next nThen)
+                    error = obj.error;
+                    return;
+                }
+                waitFor.abort();
+                cb(undefined, obj.size);
+            }));
+        }).nThen(function () {
+            Cache.getChannelCache(channel, function(err, data) {
+                if (err) { return void cb(error); }
+                var size = data && Array.isArray(data.c) && data.c.join('').length;
+                cb(null, size || 0);
+            });
         });
     };
 
@@ -467,11 +492,37 @@ define([
         });
     };
 
-    common.isNewChannel = function (href, password, cb) {
-        postMessage('IS_NEW_CHANNEL', {href: href, password: password}, function (obj) {
-            if (obj.error) { return void cb(obj.error); }
-            if (!obj) { return void cb('INVALID_RESPONSE'); }
-            cb(undefined, obj.isNew);
+    // This function is used when we want to open a pad. We first need
+    // to check if it exists. With the cached drive, we need to wait for
+    // the network to be available before we can continue.
+    common.isNewChannel = function (href, password, _cb) {
+        var cb = Util.once(Util.mkAsync(_cb));
+        var channel = Hash.hrefToHexChannelId(href, password);
+        var error;
+        Nthen(function (waitFor) {
+            Cache.getChannelCache(channel, waitFor(function(err, data) {
+                if (err || !data) { return; }
+                waitFor.abort();
+                cb(undefined, false);
+            }));
+        }).nThen(function () {
+            // If it's not in the cache try to get the value from the server
+            var isNew = function () {
+                error = undefined;
+                postMessage('IS_NEW_CHANNEL', {channel: channel}, function (obj) {
+                    if (obj && obj.error) { error = obj.error; }
+                    if (!obj) { error = "INVALID_RESPONSE"; }
+
+                    if (error === "ANON_RPC_NOT_READY") {
+                        // Try again in 1s
+                        return void setTimeout(isNew, 100);
+                    } else if (error) {
+                        return void cb(error);
+                    }
+                    cb(undefined, obj.isNew);
+                }, {timeout: -1});
+            };
+            isNew();
         });
     };
 
@@ -927,11 +978,30 @@ define([
     // Get data about a given channel: use with hidden hashes
     common.getPadDataFromChannel = function (obj, cb) {
         if (!obj || !obj.channel) { return void cb('EINVAL'); }
+        // Note: no timeout for this command, we may only have loaded the cached drive
+        // and need to wait for the fully synced drive
         postMessage("GET_PAD_DATA_FROM_CHANNEL", obj, function (data) {
             cb(void 0, data);
-        });
+        }, {timeout: -1});
     };
 
+    common.disableCache = function (disabled, cb) {
+        postMessage("CACHE_DISABLE", disabled, cb);
+    };
+    window.addEventListener('storage', function (e) {
+        if (e.key !== 'CRYPTPAD_STORE|disableCache') { return; }
+        var n = e.newValue;
+        if (n) {
+            Cache.disable();
+            common.disableCache(true, function () {});
+        } else {
+            Cache.enable();
+            common.disableCache(false, function () {});
+        }
+    });
+    if (localStorage['CRYPTPAD_STORE|disableCache']) {
+        Cache.disable();
+    }
 
     // Admin
     common.adminRpc = function (data, cb) {
@@ -1911,6 +1981,64 @@ define([
         });
     };
 
+
+    var provideFeedback = function () {
+        if (typeof(window.Proxy) === 'undefined') {
+            Feedback.send("NO_PROXIES");
+        }
+
+        if (!common.isWebRTCSupported()) {
+            Feedback.send("NO_WEBRTC");
+        }
+
+        var shimPattern = /CRYPTPAD_SHIM/;
+        if (shimPattern.test(Array.isArray.toString())) {
+            Feedback.send("NO_ISARRAY");
+        }
+
+        if (shimPattern.test(Array.prototype.fill.toString())) {
+            Feedback.send("NO_ARRAYFILL");
+        }
+
+        if (typeof(Symbol) === 'undefined') {
+            Feedback.send('NO_SYMBOL');
+        }
+
+        if (typeof(SharedWorker) === "undefined") {
+            Feedback.send('NO_SHAREDWORKER');
+        } else {
+            Feedback.send('SHAREDWORKER');
+        }
+        if (typeof(Worker) === "undefined") {
+            Feedback.send('NO_WEBWORKER');
+        }
+        if (!('serviceWorker' in navigator)) {
+            Feedback.send('NO_SERVICEWORKER');
+        }
+        if (!common.hasCSSVariables()) {
+            Feedback.send('NO_CSS_VARIABLES');
+        }
+
+        Feedback.reportScreenDimensions();
+        Feedback.reportLanguage();
+    };
+    var initFeedback = function (feedback) {
+        // Initialize feedback
+        Feedback.init(feedback);
+        provideFeedback();
+    };
+    var onStoreReady = function (data) {
+        if (common.userHash) {
+            var localToken = tryParsing(localStorage.getItem(Constants.tokenKey));
+            if (localToken === null) {
+                // if that number hasn't been set to localStorage, do so.
+                localStorage.setItem(Constants.tokenKey, data[Constants.tokenKey]);
+            }
+        }
+
+        initFeedback(data.feedback);
+    };
+
     common.startAccountDeletion = function (data, cb) {
         // Logout other tabs
         LocalStore.logout(null, true);
@@ -1957,6 +2085,8 @@ define([
             var localToken = tryParsing(localStorage.getItem(Constants.tokenKey));
             if (localToken !== data.token) { requestLogin(); }
         },
+        // Store
+        STORE_READY: onStoreReady,
         // Network
         NETWORK_DISCONNECT: common.onNetworkDisconnect.fire,
         NETWORK_RECONNECT: function (data) {
@@ -2038,52 +2168,6 @@ define([
             return void setTimeout(function () { f(void 0, env); });
         }
 
-        var provideFeedback = function () {
-            if (typeof(window.Proxy) === 'undefined') {
-                Feedback.send("NO_PROXIES");
-            }
-
-            if (!common.isWebRTCSupported()) {
-                Feedback.send("NO_WEBRTC");
-            }
-
-            var shimPattern = /CRYPTPAD_SHIM/;
-            if (shimPattern.test(Array.isArray.toString())) {
-                Feedback.send("NO_ISARRAY");
-            }
-
-            if (shimPattern.test(Array.prototype.fill.toString())) {
-                Feedback.send("NO_ARRAYFILL");
-            }
-
-            if (typeof(Symbol) === 'undefined') {
-                Feedback.send('NO_SYMBOL');
-            }
-
-            if (typeof(SharedWorker) === "undefined") {
-                Feedback.send('NO_SHAREDWORKER');
-            } else {
-                Feedback.send('SHAREDWORKER');
-            }
-            if (typeof(Worker) === "undefined") {
-                Feedback.send('NO_WEBWORKER');
-            }
-            if (!('serviceWorker' in navigator)) {
-                Feedback.send('NO_SERVICEWORKER');
-            }
-            if (!common.hasCSSVariables()) {
-                Feedback.send('NO_CSS_VARIABLES');
-            }
-
-            Feedback.reportScreenDimensions();
-            Feedback.reportLanguage();
-        };
-        var initFeedback = function (feedback) {
-            // Initialize feedback
-            Feedback.init(feedback);
-            provideFeedback();
-        };
-
         var userHash;
 
         (function iOSFirefoxFix () {
@@ -2158,8 +2242,11 @@ define([
                 anonHash: LocalStore.getFSHash(),
                 localToken: tryParsing(localStorage.getItem(Constants.tokenKey)), // TODO move this to LocalStore ?
                 language: common.getLanguage(),
+                cache: rdyCfg.cache,
+                disableCache: localStorage['CRYPTPAD_STORE|disableCache'],
                 driveEvents: true //rdyCfg.driveEvents // Boolean
             };
+            common.userHash = userHash;
 
             // FIXME Backward compatibility
             if (sessionStorage.newPadFileData) {
@@ -2354,15 +2441,6 @@ define([
 
                         if (data.anonHash && !cfg.userHash) { LocalStore.setFSHash(data.anonHash); }
 
-                        if (cfg.userHash) {
-                            var localToken = tryParsing(localStorage.getItem(Constants.tokenKey));
-                            if (localToken === null) {
-                                // if that number hasn't been set to localStorage, do so.
-                                localStorage.setItem(Constants.tokenKey, data[Constants.tokenKey]);
-                            }
-                        }
-
-                        initFeedback(data.feedback);
                         initialized = true;
                         channelIsReady();
                     });

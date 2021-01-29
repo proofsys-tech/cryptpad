@@ -157,7 +157,22 @@ define([
                 var msgEv = _Util.mkEvent();
                 var iframe = $('#sbox-iframe')[0].contentWindow;
                 var postMsg = function (data) {
-                    iframe.postMessage(data, '*');
+                    try {
+                        iframe.postMessage(data, '*');
+                    } catch (err) {
+                        console.error(err, data);
+                        if (data && data.error && data.error instanceof Error) {
+                            data.error = _Util.serializeError(data.error);
+                            try {
+                                iframe.postMessage(data, '*');
+                            } catch (err2) {
+                                console.error("impossible serialization");
+                                throw err2;
+                            }
+                        } else {
+                             throw err;
+                        }
+                    }
                 };
                 var whenReady = waitFor(function (msg) {
                     if (msg.source !== iframe) { return; }
@@ -203,6 +218,7 @@ define([
 
                 Cryptpad.ready(waitFor(), {
                     driveEvents: cfg.driveEvents,
+                    cache: Boolean(cfg.cache),
                     currentPad: currentPad
                 });
 
@@ -482,7 +498,6 @@ define([
                             // We've received a link without /p/ and it doesn't work without a password: abort
                             return void todo();
                         }
-
                         // Wrong password or deleted file?
                         askPassword(true, passwordCfg);
                     }));
@@ -644,7 +659,16 @@ define([
 
 
             // Put in the following function the RPC queries that should also work in filepicker
+            var _sframeChan = sframeChan;
             var addCommonRpc = function (sframeChan, safe) {
+                // Send UI.log and UI.warn commands from the secureiframe to the normal iframe
+                sframeChan.on('EV_ALERTIFY_LOG', function (msg) {
+                    _sframeChan.event('EV_ALERTIFY_LOG', msg);
+                });
+                sframeChan.on('EV_ALERTIFY_WARN', function (msg) {
+                    _sframeChan.event('EV_ALERTIFY_WARN', msg);
+                });
+
                 Cryptpad.universal.onEvent.reg(function (data) {
                     sframeChan.event('EV_UNIVERSAL_EVENT', data);
                 });
@@ -1459,6 +1483,21 @@ define([
                         data: data
                     });
                 });
+            });
+
+            sframeChan.on('Q_CACHE_DISABLE', function (data, cb) {
+                if (data.disabled) {
+                    Utils.Cache.clear(function () {
+                        Utils.Cache.disable();
+                    });
+                    Cryptpad.disableCache(true, cb);
+                    return;
+                }
+                Utils.Cache.enable();
+                Cryptpad.disableCache(false, cb);
+            });
+            sframeChan.on('Q_CLEAR_CACHE', function (data, cb) {
+                Utils.Cache.clear(cb);
             });
 
             sframeChan.on('Q_PIN_GET_USAGE', function (teamId, cb) {

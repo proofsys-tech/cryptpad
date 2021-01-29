@@ -34,6 +34,12 @@ define([
              NetConfig, AppConfig,
              Crypto, ChainPad, CpNetflux, Listmap, nThen, Saferphore) {
 
+    var onReadyEvt = Util.mkEvent(true);
+    var onCacheReadyEvt = Util.mkEvent(true);
+
+    // Number of days before deleting the cache for a channel or blob
+    var CACHE_MAX_AGE = 90; // DAYS
+
     // Default settings for new users
     var NEW_USER_SETTINGS = {
         drive: {
@@ -331,7 +337,6 @@ define([
             if (!s.rpc) { return void cb({error: 'RPC_NOT_READY'}); }
 
             s.rpc.removeOwnedChannel(channel, function (err) {
-                if (!err) { Cache.clearChannel(channel); }
                 cb({error:err});
             });
         };
@@ -595,9 +600,11 @@ define([
                     thumbnails: disableThumbnails === false,
                     isDriveOwned: Boolean(Util.find(store, ['driveMetadata', 'owners'])),
                     support: Util.find(store.proxy, ['mailboxes', 'support', 'channel']),
+                    driveChannel: store.driveChannel,
                     pendingFriends: store.proxy.friends_pending || {},
                     supportPrivateKey: Util.find(store.proxy, ['mailboxes', 'supportadmin', 'keys', 'curvePrivate']),
                     accountName: store.proxy.login_name || '',
+                    offline: store.offline,
                     teams: teams,
                     plan: account.plan
                 }
@@ -1035,9 +1042,7 @@ define([
             });
         };
         Store.setPadTitle = function (clientId, data, cb) {
-            if (store.offline) {
-                return void cb({ error: 'OFFLINE' });
-            }
+            onReadyEvt.reg(function () {
             var title = data.title;
             var href = data.href;
             var channel = data.channel;
@@ -1110,6 +1115,11 @@ define([
                 Array.prototype.push.apply(allData, res);
             });
             var contains = allData.length !== 0;
+            if (store.offline && !contains) {
+                return void cb({ error: 'OFFLINE' });
+            } else if (store.offline) {
+                return void cb();
+            }
             allData.forEach(function (obj) {
                 var pad = obj.data;
                 pad.atime = +new Date();
@@ -1188,6 +1198,8 @@ define([
                     onSync(teamId, waitFor());
                 });
             }).nThen(cb);
+
+            });
         };
 
         // Filepicker app
@@ -1263,8 +1275,17 @@ define([
                     }
                 });
             });
+            var result = res || viewRes;
+
+            // If we're not fully synced yet and we don't have a result, wait for the ready event
+            if (!result && store.offline) {
+                onReadyEvt.reg(function () {
+                    Store.getPadDataFromChannel(clientId, obj, cb);
+                });
+                return;
+            }
             // Call back with the best value we can get
-            cb(res || viewRes || {});
+            cb(result || {});
         };
 
         // Hidden hash: if a pad is deleted, we may have to switch back to full hash
@@ -1410,13 +1431,15 @@ define([
         // Universal
         Store.universal = {
             execCommand: function (clientId, obj, cb) {
-                var type = obj.type;
-                var data = obj.data;
-                if (store.modules[type]) {
-                    store.modules[type].execCommand(clientId, data, cb);
-                } else {
-                    return void cb({error: type + ' is disabled'});
-                }
+                onReadyEvt.reg(function () {
+                    var type = obj.type;
+                    var data = obj.data;
+                    if (store.modules[type]) {
+                        store.modules[type].execCommand(clientId, data, cb);
+                    } else {
+                        return void cb({error: type + ' is disabled'});
+                    }
+                });
             }
         };
         var loadUniversal = function (Module, type, waitFor, clientId) {
@@ -1456,17 +1479,23 @@ define([
         // Cursor
         Store.cursor = {
             execCommand: function (clientId, data, cb) {
-                if (!store.cursor) { return void cb ({error: 'Cursor channel is disabled'}); }
-                store.cursor.execCommand(clientId, data, cb);
+                // The cursor module can only be used when the store is ready
+                onReadyEvt.reg(function () {
+                    if (!store.cursor) { return void cb ({error: 'Cursor channel is disabled'}); }
+                    store.cursor.execCommand(clientId, data, cb);
+                });
             }
         };
 
         // Mailbox
         Store.mailbox = {
             execCommand: function (clientId, data, cb) {
-                if (!store.loggedIn) { return void cb(); }
-                if (!store.mailbox) { return void cb ({error: 'Mailbox is disabled'}); }
-                store.mailbox.execCommand(clientId, data, cb);
+                // The mailbox can only be used when the store is ready
+                onReadyEvt.reg(function () {
+                    if (!store.loggedIn) { return void cb(); }
+                    if (!store.mailbox) { return void cb ({error: 'Mailbox is disabled'}); }
+                    store.mailbox.execCommand(clientId, data, cb);
+                });
             }
         };
 
@@ -1631,7 +1660,7 @@ define([
                 Store.leavePad(null, data, function () {});
             };
             var conf = {
-                //Cache: Cache, // XXX re-enable cache usage
+                Cache: Cache, // ICE pad cache
                 onCacheStart: function () {
                     postMessage(clientId, "PAD_CACHE");
                 },
@@ -1723,7 +1752,7 @@ define([
                 noChainPad: true,
                 channel: data.channel,
                 metadata: data.metadata,
-                network: store.network,
+                network: store.network || store.networkPromise,
                 //readOnly: data.readOnly,
                 onConnect: function (wc, sendMessage) {
                     channel.sendMessage = function (msg, cId, cb) {
@@ -1956,6 +1985,7 @@ define([
         Store.getPadMetadata = function (clientId, data, _cb) {
             var cb = Util.once(Util.mkAsync(_cb));
 
+            if (store.offline || !store.anon_rpc) { return void cb({ error: 'OFFLINE' }); }
             if (!data.channel) { return void cb({ error: 'ENOTFOUND'}); }
             if (data.channel.length !== 32) { return void cb({ error: 'EINVAL'}); }
             store.anon_rpc.send('GET_METADATA', data.channel, function (err, obj) {
@@ -2207,7 +2237,7 @@ define([
             if (!s) { return void cb({ error: 'ENOTFOUND' }); }
             SF.load({
                 isNew: isNew,
-                network: store.network,
+                network: store.network || store.networkPromise,
                 store: s,
                 isNewChannel: Store.isNewChannel
             }, id, data, cb);
@@ -2223,16 +2253,18 @@ define([
             });
         };
         Store.addSharedFolder = function (clientId, data, cb) {
-            var s = getStore(data.teamId);
-            s.manager.addSharedFolder(data, function (id) {
-                if (id && typeof(id) === "object" && id.error) {
-                    return void cb(id);
-                }
-                var send = data.teamId ? s.sendEvent : sendDriveEvent;
-                send('DRIVE_CHANGE', {
-                    path: ['drive', UserObject.FILES_DATA]
-                }, clientId);
-                cb(id);
+            onReadyEvt.reg(function () {
+                var s = getStore(data.teamId);
+                s.manager.addSharedFolder(data, function (id) {
+                    if (id && typeof(id) === "object" && id.error) {
+                        return void cb(id);
+                    }
+                    var send = data.teamId ? s.sendEvent : sendDriveEvent;
+                    send('DRIVE_CHANGE', {
+                        path: ['drive', UserObject.FILES_DATA]
+                    }, clientId);
+                    cb(id);
+                });
             });
         };
         Store.updateSharedFolderPassword = function (clientId, data, cb) {
@@ -2501,8 +2533,9 @@ define([
             });
         };
 
-        var onReady = function (clientId, returned, cb) {
+        var onCacheReady = function (clientId, cb) {
             var proxy = store.proxy;
+            if (store.manager) { return void cb(); }
             var unpin = function (data, cb) {
                 if (!store.loggedIn) { return void cb(); }
                 Store.unpinPads(null, data, cb);
@@ -2511,8 +2544,6 @@ define([
                 if (!store.loggedIn) { return void cb(); }
                 Store.pinPads(null, data, cb);
             };
-            if (!proxy.settings) { proxy.settings = NEW_USER_SETTINGS; }
-            if (!proxy.friends_pending) { proxy.friends_pending = {}; }
             var manager = store.manager = ProxyManager.create(proxy.drive, {
                 onSync: function (cb) { onSync(null, cb); },
                 edPublic: proxy.edPublic,
@@ -2534,9 +2565,26 @@ define([
             });
             var userObject = store.userObject = manager.user.userObject;
             addSharedFolderHandler();
+            userObject.migrate(cb);
+        };
+
+        // onReady: called when the drive is synced (not using the cache anymore)
+        // "cb" is wrapped in Util.once() and may have already been called
+        // if we have a local cache
+        var onReady = function (clientId, returned, cb) {
+            console.error('READY');
+            store.ready = true;
+            var proxy = store.proxy;
+            var manager = store.manager;
+            var userObject = store.userObject;
 
             nThen(function (waitFor) {
-                userObject.migrate(waitFor());
+                if (manager) { return; }
+                if (!proxy.settings) { proxy.settings = NEW_USER_SETTINGS; }
+                if (!proxy.friends_pending) { proxy.friends_pending = {}; }
+                onCacheReady(clientId, waitFor());
+                manager = store.manager;
+                userObject = store.userObject;
             }).nThen(function (waitFor) {
                 initAnonRpc(null, null, waitFor());
                 initRpc(null, null, waitFor());
@@ -2569,7 +2617,7 @@ define([
                 loadUniversal(Messenger, 'messenger', waitFor);
                 store.messenger = store.modules['messenger'];
                 loadUniversal(Profile, 'profile', waitFor);
-                loadUniversal(Team, 'team', waitFor, clientId);
+                loadUniversal(Team, 'team', waitFor, clientId); // TODO load teams offline
                 loadUniversal(History, 'history', waitFor);
             }).nThen(function () {
                 var requestLogin = function () {
@@ -2606,7 +2654,14 @@ define([
                 returned.feedback = Util.find(proxy, ['settings', 'general', 'allowUserFeedback']);
                 Feedback.init(returned.feedback);
 
+                // "cb" may have already been called by onCacheReady
+                store.returned = returned;
                 if (typeof(cb) === 'function') { cb(returned); }
+
+                store.offline = false;
+                sendDriveEvent('NETWORK_RECONNECT'); // Tell inner that we're now online
+                broadcast([], "UPDATE_METADATA");
+                broadcast([], "STORE_READY", returned);
 
                 if (typeof(proxy.uid) !== 'string' || proxy.uid.length !== 32) {
                     // even anonymous users should have a persistent, unique-ish id
@@ -2662,6 +2717,8 @@ define([
                 });
 
                 loadMailbox();
+
+                onReadyEvt.fire();
             });
         };
 
@@ -2686,7 +2743,7 @@ define([
                 readOnly: false,
                 validateKey: secret.keys.validateKey || undefined,
                 crypto: Crypto.createEncryptor(secret.keys),
-                //Cache: Cache, // XXX re-enable cache usage
+                Cache: Cache, // ICE drive cache
                 userName: 'fs',
                 logLevel: 1,
                 ChainPad: ChainPad,
@@ -2705,8 +2762,41 @@ define([
                 if (!data.userHash) {
                     returned.anonHash = Hash.getEditHashFromKeys(secret);
                 }
+            }).on('cacheready', function (info) {
+                store.offline = true;
+                store.realtime = info.realtime;
+                store.networkPromise = info.networkPromise;
+                store.cacheReturned = returned;
+
+                if (store.networkPromise && store.networkPromise.then) {
+                    // Check if we can connect
+                    var to = setTimeout(function () {
+                        store.networkTimeout = true;
+                        broadcast([], "LOADING_DRIVE", {
+                            type: "offline"
+                        });
+                    }, 5000);
+
+                    store.networkPromise.then(function () {
+                        clearTimeout(to);
+                    }, function (err) {
+                        console.error(err);
+                        clearTimeout(to);
+                    });
+                }
+
+                if (!data.cache) { return; }
+
+                // Make sure we have a valid user object before emitting cacheready
+                if (rt.proxy && !rt.proxy.drive) { return; }
+
+                onCacheReady(clientId, function () {
+                    if (typeof(cb) === "function") { cb(returned); }
+                    onCacheReadyEvt.fire();
+                });
             }).on('ready', function (info) {
-                if (store.userObject) { return; } // the store is already ready, it is a reconnection
+                delete store.networkTimeout;
+                if (store.ready) { return; } // the store is already ready, it is a reconnection
                 store.driveMetadata = info.metadata;
                 if (!rt.proxy.drive || typeof(rt.proxy.drive) !== 'object') { rt.proxy.drive = {}; }
                 var drive = rt.proxy.drive;
@@ -2732,10 +2822,12 @@ define([
             rt.proxy.on('disconnect', function () {
                 store.offline = true;
                 sendDriveEvent('NETWORK_DISCONNECT');
+                broadcast([], "UPDATE_METADATA");
             });
             rt.proxy.on('reconnect', function () {
                 store.offline = false;
                 sendDriveEvent('NETWORK_RECONNECT');
+                broadcast([], "UPDATE_METADATA");
             });
 
             // Ping clients regularly to make sure one tab was not closed without sending a removeClient()
@@ -2772,6 +2864,15 @@ define([
             }, PING_INTERVAL);
         };
 
+        Store.disableCache = function (clientId, disabled, cb) {
+            if (disabled) {
+                Cache.disable();
+            } else {
+                Cache.enable();
+            }
+            cb();
+        };
+
         /**
          * Data:
          *   - userHash or anonHash
@@ -2783,23 +2884,40 @@ define([
          */
         var initialized = false;
 
-        var whenReady = function (cb) {
-            if (store.returned) { return void cb(); }
-            setTimeout(function() {
-                whenReady(cb);
-            }, 100);
-        };
-
         Store.init = function (clientId, data, _callback) {
             var callback = Util.once(_callback);
+
+            // If this is not the first tab and we're offline, callback only if the app
+            // supports offline mode
+            if (initialized && !store.returned && data.cache) {
+                return void onCacheReadyEvt.reg(function () {
+                    callback({
+                        state: 'ALREADY_INIT',
+                        returned: store.cacheReturned
+                    });
+                });
+            }
+
+            // If this is not the first tab (initialized is true), it means either we don't
+            // support offline or we're already online
             if (initialized) {
-                return void whenReady(function () {
+                if (store.networkTimeout) {
+                    postMessage(clientId, "LOADING_DRIVE", {
+                        type: "offline"
+                    });
+                }
+                return void onReadyEvt.reg(function () {
                     callback({
                         state: 'ALREADY_INIT',
                         returned: store.returned
                     });
                 });
             }
+
+            if (data.disableCache) {
+                Cache.disable();
+            }
+
             initialized = true;
             postMessage = function (clientId, cmd, d, cb) {
                 data.query(clientId, cmd, d, cb);
@@ -2815,11 +2933,30 @@ define([
                 }
                 if (ret && ret.error) {
                     initialized = false;
-                } else {
-                    store.returned = ret;
                 }
 
                 callback(ret);
+            });
+
+            // Clear inactive channels from cache
+            onReadyEvt.reg(function () {
+                var inactiveTime = (+new Date()) - CACHE_MAX_AGE * (24 * 3600 * 1000);
+                Cache.getKeys(function (err, keys) {
+                    if (err) { return void console.error(err); }
+                    var next = function () {
+                        if (!keys.length) { return; }
+                        var key = keys.pop();
+                        Cache.getTime(key, function (err, atime) {
+                            if (err) { return void next(); }
+                            if (!atime || atime < inactiveTime) {
+                                Cache.clearChannel(key, next());
+                                return;
+                            }
+                            next();
+                        });
+                    };
+                    next();
+                });
             });
         };
 

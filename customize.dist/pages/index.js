@@ -59,10 +59,8 @@ define([
                 return h('a', [
                     attr,
                     h(s, [
-                        h('i.' + font + '.' + icon),
-                        h('div.pad-button-text', {
-                            style: 'width:120px;height:30px;'
-                        }, [ x[1] ])
+                        h('i.' + font + '.' + icon, {'aria-hidden': 'true'}),
+                        h('div.pad-button-text', [ x[1] ])
                     ])
                 ]);
             });
@@ -74,101 +72,67 @@ define([
         });
         UI.addTooltips();
 
-        /*
-        var more = icons.length < 4? undefined: h('div.bs-callout.cp-callout-more', [
-                h('div.cp-callout-more-lessmsg.cp-hidden', [
-                    "see less ",
-                    h('i.fa.fa-caret-up')
+        var blocks = [
+            h('div.row.cp-index-section', [
+                h('div.col-sm-6',
+                    h('img.img-fluid', {
+                        src:'/customize/images/shredder.png',
+                        alt:'',
+                        'aria-hidden': 'true'
+                    })
+                ),
+                h('div.col-sm-6', [
+                    h('h2', Msg.home_privacy_title),
+                    h('p', Msg.home_privacy_text)
+                ])
+            ]),
+            h('div.row.cp-index-section',
+                h('div.col-sm-12', [
+                    h('h2', Msg.home_host_title),
+                    h('p'), Msg.home_host
+                ])
+            ),
+            h('div.row.cp-index-section', [
+                h('div.col-sm-6', [
+                    h('h2', Msg.home_opensource_title),
+                    Pages.setHTML(h('p'), Msg.home_opensource),
+                    h('img.small-logo', {
+                        src: '/customize/images/logo_AGPLv3.svg',
+                        alt: 'APGL3 License Logo'
+                    })
                 ]),
-                h('div.cp-callout-more-moremsg', [
-                    "see more ",
-                    h('i.fa.fa-caret-down')
-                ]),
-                {
-                    onclick: function () {
-                        if (showingMore) {
-                            $('.cp-more, .cp-callout-more-lessmsg').addClass('cp-hidden');
-                            $('.cp-callout-more-moremsg').removeClass('cp-hidden');
-                        } else {
-                            $('.cp-more, .cp-callout-more-lessmsg').removeClass('cp-hidden');
-                            $('.cp-callout-more-moremsg').addClass('cp-hidden');
-                        }
-                        showingMore = !showingMore;
-                    }
-                }
-            ]);*/
-
-        var _link = h('a', {
-            href: "https://opencollective.com/cryptpad/",
-            target: '_blank',
-            rel: 'noopener',
-        });
-
-        var crowdFunding = h('button', [
-            Msg.crowdfunding_button
-        ]);
-
-        $(crowdFunding).click(function () {
-            _link.click();
-            Feedback.send('HOME_SUPPORT_CRYPTPAD');
-        });
-
-        var blocks = h('div.container',[
-            h('div.row.justify-content-sm-center',[
-                h('div.col-12.col-sm-4.cp-index-block.cp-index-block-host', h('div', [
-                    Pages.setHTML(h('span'), Msg.home_host),
-                    h('div.cp-img-container', [
-                        h('img.agpl', {
-                            src: "/customize/images/AGPL.png",
-                            title: Msg.home_host_agpl
-                        }),
-                        h('a.img', {
-                            href: 'https://blog.cryptpad.fr/2018/11/13/CryptPad-receives-NGI-Startup-Award/',
-                            target: '_blank'
-                        }, h('img.ngi', {
-                            src: "/customize/images/ngi.png",
-                            title: Msg.home_ngi
-                        }))
-                    ])
-                ])),
-                h('div.col-12.col-sm-4.cp-index-block.cp-index-block-product', h('div', [
-                    Msg.home_product
-                ])),
-                AppConfig.disableCrowdfundingMessages ? undefined : h('div.col-12.col-sm-4.cp-index-block.cp-index-block-help', h('div', [
-                    Msg.crowdfunding_home1,
-                    h('br'),
-                    Msg.crowdfunding_home2,
-                    h('br'),
-                    crowdFunding,
-                    _link
-                ])),
+                h('div.col-sm-6', [
+                    h('h2', Msg.home_support_title),
+                    Pages.setHTML(h('span'), Msg.home_support),
+                    Pages.crowdfundingButton(function () {
+                        Feedback.send('HOME_SUPPORT_CRYPTPAD');
+                    }),
+                ])
             ])
-        ]);
+        ];
 
         return [
             h('div#cp-main', [
                 Pages.infopageTopbar(),
                 h('div.container.cp-container', [
-                    h('div.row', [
-                        h('div.cp-title.col-12.col-sm-6', [
-                            h('img', { src: '/customize/cryptpad-new-logo-colors-logoonly.png?' + urlArgs }),
+                    h('div.row.cp-home-hero', [
+                        h('div.cp-title.col-md-7', [
+                            h('img', {
+                                src: '/customize/CryptPad_logo.svg?' + urlArgs,
+                                'aria-hidden': 'true',
+                                alt: ''
+                            }),
                             h('h1', 'CryptPad'),
-                            h('p', Msg.main_catch_phrase)
+                            UI.setHTML(h('span.tag-line'), Msg.main_catch_phrase)
                         ]),
-                        h('div.col-12.col-sm-6.cp-app-grid', [
+                        h('div.col-md-5.cp-app-grid', [
                             icons,
-                            //more
                         ])
                     ]),
-                    blocks,
-                    /*h('div.row', [
-                        h('div.cp-crowdfunding', [
-                            crowdFunding
-                        ])
-                    ])*/
+                    blocks
                 ]),
+                Pages.infopageFooter(),
             ]),
-            Pages.infopageFooter(),
         ];
     };
 });

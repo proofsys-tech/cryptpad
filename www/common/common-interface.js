@@ -774,7 +774,8 @@ define([
             $(originalBtn).show();
         };
 
-        $button.click(function () {
+        $button.click(function (e) {
+            e.stopPropagation();
             done(true);
         });
 
@@ -792,7 +793,8 @@ define([
             to = setTimeout(todo, INTERVAL);
         };
 
-        $(originalBtn).addClass('cp-button-confirm-placeholder').click(function () {
+        $(originalBtn).addClass('cp-button-confirm-placeholder').click(function (e) {
+            e.stopPropagation();
             // If we have a validation function, continue only if it's true
             if (config.validate && !config.validate()) { return; }
             i = 1;
@@ -939,6 +941,7 @@ define([
             // Show the loading screen
             $loading.css('display', '');
             $loading.removeClass('cp-loading-hidden');
+            $loading.removeClass('cp-loading-transparent');
             if (config.newProgress) {
                 var progress = h('div.cp-loading-progress', [
                     h('p.cp-loading-progress-list'),
@@ -994,7 +997,8 @@ define([
         $loading.find('.cp-loading-progress').remove();
         // Hide the spinner
         $('.cp-loading-spinner-container').hide();
-        if (transparent) { $loading.css('opacity', 0.9); }
+        $loading.removeClass('cp-loading-transparent');
+        if (transparent) { $loading.addClass('cp-loading-transparent'); }
 
         // Add the error message
         var $error = $loading.find('#cp-loading-message').show();
@@ -1003,6 +1007,16 @@ define([
         } else {
             $error.html(error || Messages.error);
         }
+        $error.find('a[href]').click(function (e) {
+            e.preventDefault();
+            var href = $(this).prop('href');
+            if (!href) { return; }
+            if (e && e.ctrlKey) {
+                window.open('/bounce/#'+encodeURIComponent(href));
+                return;
+            }
+            window.parent.location = href;
+        });
         if (exitable) {
             $(window).focus();
             $(window).keydown(function (e) {
@@ -1167,7 +1181,14 @@ define([
             }
         });
 
-        $input.change(function () { $mark.focus(); });
+        $input.change(function () {
+            if (!opts.labelAlt) { return; }
+            if ($input.is(':checked') !== checked) {
+                $(label).text(opts.labelAlt);
+            } else {
+                $(label).text(labelTxt);
+            }
+        });
 
         return h('label.cp-checkmark', labelOpts, [
             input,
