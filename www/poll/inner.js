@@ -17,6 +17,7 @@ define([
     '/common/common-ui-elements.js',
     '/common/hyperscript.js',
     '/customize/messages.js',
+    '/common/sframe-common-codemirror.js',
     'cm/lib/codemirror',
     '/common/test.js',
 
@@ -48,6 +49,7 @@ define([
     UIElements,
     h,
     Messages,
+    SFCodeMirror,
     CMeditor,
     Test)
 {
@@ -1164,6 +1166,7 @@ define([
         var $drawer = APP.toolbar.$drawer;
 
         metadataMgr.onChange(function () {
+            if (!APP.proxy) { return; }
             var md = copyObject(metadataMgr.getMetadata());
             APP.proxy.metadata = md;
         });
@@ -1171,6 +1174,9 @@ define([
             var meta = JSON.parse(JSON.stringify(APP.proxy.metadata));
             metadataMgr.updateMetadata(meta);
         });
+
+        var $store = common.createButton('storeindrive', true);
+        $drawer.append($store);
 
         /* add a forget button */
         var forgetCb = function (err) {
@@ -1263,10 +1269,10 @@ define([
                         ]),
                         h('div#cp-app-poll-table-container', [
                             h('div#cp-app-poll-table-scroll', [h('table')]),
-                            h('button#cp-app-poll-create-user.btn.btn-secondary', {
+                            h('button#cp-app-poll-create-user.btn.btn-default', {
                                 title: Messages.poll_create_user
                             }, Messages.poll_commit),
-                            h('button#cp-app-poll-create-option.btn.btn-secondary', {
+                            h('button#cp-app-poll-create-option.btn.btn-default', {
                                 title: Messages.poll_create_option
                             }, h('span.fa.fa-plus')),
                         ]),
@@ -1311,6 +1317,7 @@ define([
         }).nThen(function (/* waitFor */) {
             Test.registerInner(common.getSframeChannel());
             var metadataMgr = common.getMetadataMgr();
+            metadataMgr.setDegraded(false); // FIXME degarded mode unsupported (no cursor channel)
 
             APP.locked = APP.readOnly = metadataMgr.getPrivateData().readOnly;
             APP.loggedIn = common.isLoggedIn();
@@ -1330,12 +1337,13 @@ define([
             APP.$comments = $('#cp-app-poll-comments-list');
             APP.$addComment = $('#cp-app-poll-comments-add');
 
-            APP.editor = CMeditor.fromTextArea(APP.$description[0], {
-                lineNumbers: true,
-                lineWrapping: true,
-                styleActiveLine : true,
-                mode: "markdown",
-            });
+            var cm = SFCodeMirror.create("gfm", CMeditor, APP.$description[0]);
+            var editor = APP.editor = cm.editor;
+            editor.setOption('lineNumbers', true);
+            editor.setOption('lineWrapping', true);
+            editor.setOption('styleActiveLine', true);
+            editor.setOption('readOnly', false);
+            cm.configureTheme(common, function () {});
 
             APP.$descriptionPublished.click(function (e) {
                 if (!e.target) { return; }
@@ -1361,23 +1369,23 @@ define([
                 $('#cp-app-poll-comments-add-title').remove();
             }
 
-            var rt = APP.rt = Listmap.create(listmapConfig);
-            APP.proxy = rt.proxy;
+            common.getPadAttribute('userid', function (e, userid) {
+            if (e) { console.error(e); }
+                var rt = APP.rt = Listmap.create(listmapConfig);
+                APP.proxy = rt.proxy;
 
-            var firstConnection = true;
-            rt.proxy.on('create', onCreate)
-                 .on('ready', function (info) {
-                    if (!firstConnection) { return; } // TODO fix this issue in listmap
-                    firstConnection = false;
-                    common.getPadAttribute('userid', function (e, userid) {
-                        if (e) { console.error(e); }
+                var firstConnection = true;
+                rt.proxy.on('create', onCreate)
+                    .on('ready', function (info) {
+                        if (!firstConnection) { return; } // TODO fix this issue in listmap
+                        firstConnection = false;
                         APP.userid = userid;
                         onReady(info, userid);
-                    });
-                 })
-                 .on('disconnect', onDisconnect)
-                 .on('reconnect', onReconnect)
-                 .on('error', onError);
+                    })
+                .on('disconnect', onDisconnect)
+                .on('reconnect', onReconnect)
+                .on('error', onError);
+            });
         });
     };
     main();

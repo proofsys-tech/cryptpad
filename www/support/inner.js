@@ -12,6 +12,7 @@ define([
     '/support/ui.js',
     '/api/config',
     '/customize/application_config.js',
+    '/customize/pages.js',
 
     'css!/bower_components/bootstrap/dist/css/bootstrap.min.css',
     'css!/bower_components/components-font-awesome/css/font-awesome.min.css',
@@ -29,7 +30,8 @@ define([
     h,
     Support,
     ApiConfig,
-    AppConfig
+    AppConfig,
+    Pages
     )
 {
     var APP = window.APP = {};
@@ -39,10 +41,10 @@ define([
     var privateData;
 
     var categories = {
-        'tickets': [
+        'tickets': [ // Msg.support_cat_tickets
             'cp-support-list',
         ],
-        'new': [
+        'new': [ // Msg.support_cat_new
             'cp-support-language',
             'cp-support-form',
         ],
@@ -66,8 +68,13 @@ define([
 
         var $div = $('<div>', {'class': 'cp-support-' + key + ' cp-sidebarlayout-element'});
         $('<label>').text(Messages['support_'+safeKey+'Title'] || key).appendTo($div);
-        $('<span>', {'class': 'cp-sidebarlayout-description'})
-            .text(Messages['support_'+safeKey+'Hint'] || 'Coming soon...').appendTo($div);
+        var $hintSpan = $('<span>', {'class': 'cp-sidebarlayout-description'}).appendTo($div);
+        var hintContent = Messages['support_'+safeKey+'Hint'] || 'Coming soon...';
+        if (safeKey === 'form') {
+            $hintSpan.html(hintContent);
+        } else {
+            $hintSpan.text(hintContent);
+        }
         if (addButton) {
             $('<button>', {
                 'class': 'btn btn-primary'
@@ -81,7 +88,7 @@ define([
     // List existing (open?) tickets
     create['list'] = function () {
         var key = 'list';
-        var $div = makeBlock(key);
+        var $div = makeBlock(key); // Msg.support_listHint, .support_listTitle
         $div.addClass('cp-support-container');
         var hashesById = {};
 
@@ -114,6 +121,7 @@ define([
                     return;
                 }
                 if (msg.type !== 'TICKET') { return; }
+                $ticket.removeClass('cp-support-list-closed');
 
                 if (!$ticket.length) {
                     $ticket = APP.support.makeTicket($div, content, function () {
@@ -161,7 +169,8 @@ define([
     // Create a new tickets
     create['form'] = function () {
         var key = 'form';
-        var $div = makeBlock(key, true);
+        var $div = makeBlock(key, true); // Msg.support_formHint, .support_formTitle, .support_formButton
+        Pages.documentationLink($div.find('a')[0], 'https://docs.cryptpad.fr/en/user_guide/index.html');
 
         var form = APP.support.makeForm();
 
@@ -187,7 +196,7 @@ define([
     // Support is disabled...
     create['disabled'] = function () {
         var key = 'disabled';
-        var $div = makeBlock(key);
+        var $div = makeBlock(key); // Msg.support_disabledHint, .support_disabledTitle
         return $div;
     };
 
@@ -197,6 +206,7 @@ define([
     };
     var showCategories = function (cat) {
         hideCategories();
+        if (!Array.isArray(cat)) { return void console.error("invalid category"); }
         cat.forEach(function (c) {
             APP.$rightside.find('.'+c).show();
         });
@@ -208,6 +218,7 @@ define([
         var metadataMgr = common.getMetadataMgr();
         var privateData = metadataMgr.getPrivateData();
         var active = privateData.category || 'tickets';
+        if (!categories[active]) { active = 'tickets'; }
         common.setHash(active);
         Object.keys(categories).forEach(function (key) {
             var $category = $('<div>', {

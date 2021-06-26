@@ -10,11 +10,12 @@ define(['/customize/application_config.js'], function (AppConfig) {
         oldStorageKey: 'CryptPad_RECENTPADS',
         storageKey: 'filesData',
         tokenKey: 'loginToken',
+        prefersDriveRedirectKey: 'prefersDriveRedirect',
         displayPadCreationScreen: 'displayPadCreationScreen',
         deprecatedKey: 'deprecated',
         MAX_TEAMS_SLOTS: AppConfig.maxTeamsSlots || 5,
         MAX_TEAMS_OWNED: AppConfig.maxOwnedTeams || 5,
         // Apps
-        criticalApps: ['profile', 'settings', 'debug', 'admin', 'support', 'notifications']
+        criticalApps: ['profile', 'settings', 'debug', 'admin', 'support', 'notifications', 'calendar']
     };
 });

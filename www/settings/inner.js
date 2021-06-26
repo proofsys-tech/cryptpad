@@ -14,6 +14,7 @@ define([
     '/api/config',
     '/common/make-backup.js',
     '/common/common-feedback.js',
+    '/common/common-constants.js',
 
     '/common/jscolor.js',
     '/bower_components/file-saver/FileSaver.min.js',
@@ -35,7 +36,8 @@ define([
     AppConfig,
     ApiConfig,
     Backup,
-    Feedback
+    Feedback,
+    Constants
 ) {
     var saveAs = window.saveAs;
     var APP = window.APP = {};
@@ -46,7 +48,7 @@ define([
     var sframeChan;
 
     var categories = {
-        'account': [
+        'account': [ // Msg.settings_cat_account
             'cp-settings-own-drive',
             'cp-settings-info-block',
             'cp-settings-displayname',
@@ -55,41 +57,50 @@ define([
             'cp-settings-change-password',
             'cp-settings-delete'
         ],
-        'security': [
+        'security': [ // Msg.settings_cat_security
             'cp-settings-logout-everywhere',
             'cp-settings-autostore',
             'cp-settings-safe-links',
             'cp-settings-userfeedback',
             'cp-settings-cache',
         ],
+        'style': [ // Msg.settings_cat_style
+            'cp-settings-colortheme',
+            'cp-settings-custom-theme',
+        ],
         'drive': [
+            'cp-settings-redirect',
             'cp-settings-resettips',
             'cp-settings-drive-duplicate',
             'cp-settings-thumbnails',
             'cp-settings-drive-backup',
             'cp-settings-drive-import-local',
-            'cp-settings-trim-history'
+            'cp-settings-trim-history',
             //'cp-settings-drive-reset'
         ],
-        'cursor': [
+        'cursor': [ // Msg.settings_cat_cursor
             'cp-settings-cursor-color',
             'cp-settings-cursor-share',
             'cp-settings-cursor-show',
         ],
-        'pad': [
+        'pad': [ // Msg.settings_cat_pad
             'cp-settings-pad-width',
             'cp-settings-pad-spellcheck',
             'cp-settings-pad-notif',
+            'cp-settings-pad-openlink',
         ],
-        'code': [
+        'code': [ // Msg.settings_cat_code
             'cp-settings-code-indent-unit',
             'cp-settings-code-indent-type',
             'cp-settings-code-brackets',
             'cp-settings-code-font-size',
             'cp-settings-code-spellcheck',
         ],
-        'kanban': [
+        'kanban': [ // Msg.settings_cat_kanban
             'cp-settings-kanban-tags',
+        ],
+        'notifications': [
+            'cp-settings-notif-calendar'
         ],
         'subscription': {
             onClick: function() {
@@ -360,7 +371,7 @@ define([
         return $div;
     };
 
-    makeBlock('cache', function (cb) {
+    makeBlock('cache', function (cb) { // Msg.settings_cacheHint, .settings_cacheTitle
         var store = window.cryptpadStore;
 
         var $cbox = $(UI.createCheckbox('cp-settings-cache',
@@ -408,34 +419,134 @@ define([
         ]);
     }, true);
 
-    create['delete'] = function() {
-        if (!common.isLoggedIn()) { return; }
-        var $div = $('<div>', { 'class': 'cp-settings-delete cp-sidebarlayout-element' });
+    makeBlock('colortheme', function (cb) { // Msg.settings_colorthemeHint .settings_colorthemeTitle
+        var theme = window.cryptpadStore.store['colortheme'] || 'default';
+        var os = window.cryptpadStore.store['colortheme_default'] || 'light';
+        var values = [
+            'default', // Msg.settings_colortheme_default
+            'light', // Msg.settings_colortheme_light
+            'dark', // Msg.settings_colortheme_dark
+            /* 'custom'*/ // Msg.settings_colortheme_custom
+        ];
 
-        $('<span>', { 'class': 'label' }).text(Messages.settings_deleteTitle).appendTo($div);
+        var defaultTheme = Messages['settings_colortheme_'+os];
+        var opts = h('div.cp-settings-radio-container', [
+            values.map(function (key) {
+                return UI.createRadio('cp-colortheme-radio', 'cp-colortheme-radio-'+key,
+                    Messages._getKey('settings_colortheme_' + key, [defaultTheme]),
+                    key === theme, {
+                        input: { value: key },
+                        label: { class: 'noTitle' }
+                    });
+            })
+        ]);
 
-        $('<span>', { 'class': 'cp-sidebarlayout-description' })
-            .append(Messages.settings_deleteHint).appendTo($div);
+        cb(opts);
 
-        var $ok = $('<span>', { 'class': 'fa fa-check', title: Messages.saved });
-        var $spinner = $('<span>', { 'class': 'fa fa-spinner fa-pulse' });
+        var spinner = UI.makeSpinner($(opts));
+        $(opts).find('input[name="cp-colortheme-radio"]').change(function () {
+            var val = this.value;
+            if (values.indexOf(val) === -1) { return; }
+            if (val === theme) { return; }
+            spinner.spin();
 
-        var $button = $('<button>', { 'id': 'cp-settings-delete', 'class': 'btn btn-danger' })
-            .text(Messages.settings_deleteButton).appendTo($div);
+            // Check if we need to flush cache
+            var flush = false;
+            if (val === "default" && os === theme) {
+                // Switch from a theme to default without changing value: nothing to do
+            } else if (theme === "default" && os === val) {
+                // Switch from default to a selected value without any change: nothing to do
+            } else {
+                // The theme is different, flush cache
+                flush = true;
+            }
 
-        $button.click(function() {
-            $spinner.show();
-            UI.confirm(Messages.settings_deleteConfirm, function(yes) {
-                if (!yes) { return; }
-                sframeChan.query("Q_SETTINGS_DELETE_ACCOUNT", null, function(err, data) {
+            if (val === 'default') { val = ''; }
+            // browsers try to load iframes from cache if they have the same id as was previously seen
+            // this seems to help?
+            window.location.hash = '';
+            sframeChan.query('Q_COLORTHEME_CHANGE', {
+                theme: val,
+                flush: flush
+            }, function () {
+                window.cryptpadStore.store['colortheme'] = val;
+                theme = val || 'default';
+                spinner.done();
+            });
+        });
+    }, true);
+
+    makeBlock('delete', function(cb) { // Msg.settings_deleteHint, .settings_deleteTitle
+        if (!common.isLoggedIn()) { return cb(false); }
+
+        var button = h('button.btn.btn-danger', Messages.settings_deleteButton);
+        var form = h('div', [
+            UI.passwordInput({
+                id: 'cp-settings-delete-account',
+                placeholder: Messages.settings_changePasswordCurrent
+            }, true),
+            button
+        ]);
+        var $form = $(form);
+        var $button = $(button);
+        var spinner = UI.makeSpinner($form);
+
+        UI.confirmButton(button, {
+            classes: 'btn-danger',
+            multiple: true
+        }, function() {
+            nThen(function (waitFor) {
+                $button.prop('disabled', 'disabled');
+                var priv = metadataMgr.getPrivateData();
+                // Check if subscriptions are enabled and you have a premium plan
+                if (priv.plan && priv.plan !== "custom" && ApiConfig.allowSubscriptions) {
+                    // Also make sure upgradeURL is defined
+                    var url = priv.accounts && priv.accounts.upgradeURL;
+                    if (!url) { return; }
+                    url += '#mysubs';
+                    var a = h('a', { href:url }, Messages.settings_deleteSubscription);
+                    $(a).click(function (e) {
+                        e.preventDefault();
+                        common.openUnsafeURL(url);
+                    });
+                    UI.confirm(h('div', [
+                        Messages.settings_deleteWarning, h('p', a)
+                    ]), waitFor(function (yes) {
+                        if (!yes) {
+                            $button.prop('disabled', '');
+                            waitFor.abort();
+                        }
+                    }), {
+                        ok: Messages.settings_deleteContinue,
+                        okClass: 'btn.btn-danger',
+                        cancelClass: 'btn.btn-primary'
+                    });
+                }
+            }).nThen(function () {
+                var password = $form.find('#cp-settings-delete-account').val();
+                if (!password) {
+                    return void UI.warn(Messages.error);
+                }
+                spinner.spin();
+                sframeChan.query("Q_SETTINGS_DELETE_ACCOUNT", {
+                    password: password
+                }, function(err, data) {
+                    if (data && data.error) {
+                        spinner.hide();
+                        $button.prop('disabled', '');
+                        if (data.error === 'INVALID_PASSWORD') {
+                            return void UI.warn(Messages.drive_sfPasswordError);
+                        }
+                        console.error(data.error);
+                        return void UI.warn(Messages.error);
+                    }
                     // Owned drive
                     if (data.state === true) {
                         sframeChan.query('Q_SETTINGS_LOGOUT', null, function() {});
                         UI.alert(Messages.settings_deleted, function() {
                             common.gotoURL('/');
                         });
-                        $ok.show();
-                        $spinner.hide();
+                        spinner.done();
                         return;
                     }
                     // Not owned drive
@@ -444,27 +555,14 @@ define([
                         h('pre', JSON.stringify(data, 0, 2))
                     ]);
                     UI.alert(msg);
-                    $spinner.hide();
+                    spinner.hide();
+                    $button.prop('disabled', '');
                 });
             });
-            // TODO
-            /*
-            UI.confirm("Are you sure?", function (yes) {
-                // Logout everywhere
-                // Disconnect other tabs
-                // Remove owned pads
-                // Remove owned drive
-                // Remove pinstore
-                // Alert: "Account deleted", press OK to be redirected to the home page
-                $spinner.hide();
-            });*/
         });
 
-        $spinner.hide().appendTo($div);
-        $ok.hide().appendTo($div);
-
-        return $div;
-    };
+        cb(form);
+    }, true);
 
     create['change-password'] = function() {
         if (!common.isLoggedIn()) { return; }
@@ -547,7 +645,6 @@ define([
                 }, {
                     ok: Messages.register_writtenPassword,
                     cancel: Messages.register_cancel,
-                    cancelClass: 'btn.btn-safe',
                     okClass: 'btn.btn-danger',
                     reverseOrder: true,
                     done: function($dialog) {
@@ -571,7 +668,7 @@ define([
         return $div;
     };
 
-    makeBlock('own-drive', function(cb, $div) {
+    makeBlock('own-drive', function(cb, $div) { // Msg.settings_ownDriveHint, .settings_ownDriveTitle
         if (privateData.isDriveOwned || !common.isLoggedIn()) {
             return void cb(false);
         }
@@ -626,7 +723,7 @@ define([
         cb(form);
     }, true);
 
-    makeBlock('mediatag-size', function(cb) {
+    makeBlock('mediatag-size', function(cb) { // Msg.settings_mediatagSizeHint, .settings_mediatagSizeTitle
         var $inputBlock = $('<div>', {
             'class': 'cp-sidebarlayout-input-block',
         });
@@ -680,7 +777,7 @@ define([
 
     // Security
 
-    makeBlock('safe-links', function(cb) {
+    makeBlock('safe-links', function(cb) { // Msg.settings_safeLinksTitle
 
         var $cbox = $(UI.createCheckbox('cp-settings-safe-links',
             Messages.settings_safeLinksCheckbox,
@@ -747,6 +844,45 @@ define([
         return $div;
     };
 
+    create['redirect'] = function () {
+        if (!common.isLoggedIn()) { return; }
+        var $div = $('<div>', { 'class': 'cp-settings-redirect cp-sidebarlayout-element' });
+
+        $('<span>', { 'class': 'label' }).text(Messages.settings_driveRedirectTitle).appendTo($div);
+
+        $('<span>', { 'class': 'cp-sidebarlayout-description' })
+            .append(Messages.settings_driveRedirectHint)
+            .appendTo($div);
+
+        var $ok = $('<span>', { 'class': 'fa fa-check', title: Messages.saved });
+        var $spinner = $('<span>', { 'class': 'fa fa-spinner fa-pulse' });
+
+        var $cbox = $(UI.createCheckbox('cp-settings-redirect',
+            Messages.settings_driveRedirect,
+            false, { label: { class: 'noTitle' } }));
+        var $checkbox = $cbox.find('input').on('change', function() {
+            $spinner.show();
+            $ok.hide();
+            var val = $checkbox.is(':checked') || false;
+            common.setAttribute(['general', Constants.prefersDriveRedirectKey], val, function() {
+                $spinner.hide();
+                $ok.show();
+                sframeChan.query("Q_SET_DRIVE_REDIRECT_PREFERENCE", {
+                    value: val,
+                }, console.log);
+            });
+        });
+
+        $cbox.appendTo($div);
+
+        $ok.hide().appendTo($cbox);
+        $spinner.hide().appendTo($cbox);
+
+        if (privateData.prefersDriveRedirect === true) {
+            $checkbox[0].checked = true;
+        }
+        return $div;
+    };
 
     create['resettips'] = function() {
         var $div = $('<div>', { 'class': 'cp-settings-resettips cp-sidebarlayout-element' });
@@ -1004,7 +1140,7 @@ define([
         $div.find('#cp-settings-trim-container').remove();
         cb(content);
     };
-    makeBlock('trim-history', function(cb, $div) {
+    makeBlock('trim-history', function(cb, $div) { // Msg.settings_trimHistoryHint, .settings_trimHistoryTitle
         if (!common.isLoggedIn()) { return void cb(false); }
         redrawTrimHistory(cb, $div);
     }, true);
@@ -1179,14 +1315,18 @@ define([
         var $ok = $('<span>', { 'class': 'fa fa-check', title: Messages.saved });
         var $spinner = $('<span>', { 'class': 'fa fa-spinner fa-pulse' });
 
+        var store = window.cryptpadStore;
+        var key = 'pad-small-width';
+        var isHidden = store.store[key] === '1';
+
         var $cbox = $(UI.createCheckbox('cp-settings-padwidth',
             Messages.settings_padWidthLabel,
-            false, { label: { class: 'noTitle' } }));
+            isHidden, { label: { class: 'noTitle' } }));
         var $checkbox = $cbox.find('input').on('change', function() {
             $spinner.show();
             $ok.hide();
             var val = $checkbox.is(':checked');
-            common.setAttribute(['pad', 'width'], val, function() {
+            store.put(key, val ? '1' : '0', function () {
                 $spinner.hide();
                 $ok.show();
             });
@@ -1196,13 +1336,6 @@ define([
         $ok.hide().appendTo($cbox);
         $spinner.hide().appendTo($cbox);
 
-
-        common.getAttribute(['pad', 'width'], function(e, val) {
-            if (e) { return void console.error(e); }
-            if (val) {
-                $checkbox.attr('checked', 'checked');
-            }
-        });
         return $div;
     };
 
@@ -1243,7 +1376,7 @@ define([
         return $div;
     };
 
-    makeBlock('pad-notif', function(cb) {
+    makeBlock('pad-notif', function(cb) { // Msg.settings_padNotifHint, .settings_padNotifTitle
         var $cbox = $(UI.createCheckbox('cp-settings-pad-notif',
             Messages.settings_padNotifCheckbox,
             false, { label: { class: 'noTitle' } }));
@@ -1268,6 +1401,43 @@ define([
 
         cb($cbox);
     }, true);
+
+    create['pad-openlink'] = function() {
+        var $div = $('<div>', {
+            'class': 'cp-settings-pad-openlink cp-sidebarlayout-element'
+        });
+        $('<label>').text(Messages.settings_padOpenLinkTitle).appendTo($div);
+        $('<span>', { 'class': 'cp-sidebarlayout-description' })
+            .text(Messages.settings_padOpenLinkHint).appendTo($div);
+
+        var $ok = $('<span>', { 'class': 'fa fa-check', title: Messages.saved });
+        var $spinner = $('<span>', { 'class': 'fa fa-spinner fa-pulse' });
+
+        var $cbox = $(UI.createCheckbox('cp-settings-pad-openlink',
+            Messages.settings_padOpenLinkLabel,
+            false, { label: { class: 'noTitle' } }));
+        var $checkbox = $cbox.find('input').on('change', function() {
+            $spinner.show();
+            $ok.hide();
+            var val = $checkbox.is(':checked');
+            common.setAttribute(['pad', 'openLink'], val, function() {
+                $spinner.hide();
+                $ok.show();
+            });
+        });
+        $cbox.appendTo($div);
+
+        $ok.hide().appendTo($cbox);
+        $spinner.hide().appendTo($cbox);
+
+        common.getAttribute(['pad', 'openLink'], function(e, val) {
+            if (e) { return void console.error(e); }
+            if (val) {
+                $checkbox.attr('checked', 'checked');
+            }
+        });
+        return $div;
+    };
 
     // Code settings
 
@@ -1435,7 +1605,7 @@ define([
     };
 
 
-    makeBlock('kanban-tags', function(cb) {
+    makeBlock('kanban-tags', function(cb) { // Msg.settings_kanbanTagsHint, .settings_kanbanTagsTitle
 
         var opt1 = UI.createRadio('cp-settings-kanban-tags', 'cp-settings-kanban-tags-and',
             Messages.settings_kanbanTagsAnd, false, {
@@ -1475,6 +1645,39 @@ define([
         cb($d);
     }, true);
 
+    makeBlock('notif-calendar', function(cb) { // Msg.settings_notifCalendarHint, .settings_notifCalendarTitle
+
+        var $cbox = $(UI.createCheckbox('cp-settings-cache',
+            Messages.settings_notifCalendarCheckbox,
+            false, { label: { class: 'noTitle' } }));
+        var spinner = UI.makeSpinner($cbox);
+
+        var $checkbox = $cbox.find('input').on('change', function() {
+            spinner.spin();
+            var val = !$checkbox.is(':checked');
+            common.setAttribute(['general', 'calendar', 'hideNotif'], val, function(e) {
+                if (e) {
+                    console.error(e);
+                    // error: restore previous value
+                    if (val) { $checkbox.attr('checked', ''); }
+                    else { $checkbox.attr('checked', 'checked'); }
+                    spinner.hide();
+                    return void console.error(e);
+                }
+                spinner.done();
+            });
+        });
+
+        common.getAttribute(['general', 'calendar', 'hideNotif'], function(e, val) {
+            if (e) { return void console.error(e); }
+            if (!val) {
+                $checkbox.attr('checked', 'checked');
+            }
+        });
+
+        cb($cbox[0]);
+    }, true);
+
     // Settings app
 
     var createUsageButton = function() {
@@ -1494,24 +1697,36 @@ define([
         });
     };
 
+    var SIDEBAR_ICONS = {
+        account: 'fa fa-user-o',
+        drive: 'fa fa-hdd-o',
+        cursor: 'fa fa-i-cursor',
+        code: 'fa fa-file-code-o',
+        pad: 'fa fa-file-word-o',
+        security: 'fa fa-lock',
+        subscription: 'fa fa-star-o',
+        kanban: 'cptools cptools-kanban',
+        style: 'cptools cptools-palette',
+        notifications: 'fa fa-bell'
+    };
+
+    Messages.settings_cat_notifications = Messages.notificationsPage;
     var createLeftside = function() {
         var $categories = $('<div>', { 'class': 'cp-sidebarlayout-categories' })
             .appendTo(APP.$leftside);
         APP.$usage = $('<div>', { 'class': 'usage' }).appendTo(APP.$leftside);
         var active = privateData.category || 'account';
+        if (!categories[active]) { active = 'account'; }
         Object.keys(categories).forEach(function(key) {
             var $category = $('<div>', {
                 'class': 'cp-sidebarlayout-category',
                 'data-category': key
             }).appendTo($categories);
-            if (key === 'account') { $category.append($('<span>', { 'class': 'fa fa-user-o' })); }
-            if (key === 'drive') { $category.append($('<span>', { 'class': 'fa fa-hdd-o' })); }
-            if (key === 'cursor') { $category.append($('<span>', { 'class': 'fa fa-i-cursor' })); }
-            if (key === 'code') { $category.append($('<span>', { 'class': 'fa fa-file-code-o' })); }
-            if (key === 'pad') { $category.append($('<span>', { 'class': 'fa fa-file-word-o' })); }
-            if (key === 'security') { $category.append($('<span>', { 'class': 'fa fa-lock' })); }
-            if (key === 'subscription') { $category.append($('<span>', { 'class': 'fa fa-star-o' })); }
-            if (key === 'kanban') { $category.append($('<span>', { 'class': 'cptools cptools-kanban' })); }
+
+            var iconClass = SIDEBAR_ICONS[key];
+            if (iconClass) {
+                $category.append($('<span>', { 'class': iconClass }));
+            }
 
             if (key === active) {
                 $category.addClass('cp-leftside-active');

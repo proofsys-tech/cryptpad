@@ -73,6 +73,8 @@ define([
         else {
             editor.setSelection(posToCursor(selects[0], remoteDoc), posToCursor(selects[1], remoteDoc));
         }
+
+        editor.scrollTo(scroll.left, scroll.top);
     };
 
     module.handleImagePaste = function (editor) {
@@ -379,10 +381,12 @@ define([
 
         exp.configureTheme = function (Common, cb) {
             /*  Remember the user's last choice of theme using localStorage */
-            var themeKey = ['codemirror', 'theme'];
+            var isDark = window.CryptPad_theme === "dark";
+            var themeKey = ['codemirror', isDark ? 'themedark' : 'theme'];
+            var defaultTheme = isDark ? 'cryptpad-dark' : 'default';
 
             var todo = function (err, lastTheme) {
-                lastTheme = lastTheme || 'default';
+                lastTheme = lastTheme || defaultTheme;
                 var options = [];
                 Themes.forEach(function (l) {
                     options.push({
@@ -528,6 +532,9 @@ define([
             }
         };
         exp.setRemoteCursor = function (data) {
+            if (data.reset) {
+                return void exp.removeCursors();
+            }
             if (data.leave) {
                 $('.cp-codemirror-cursor[id^='+data.id+']').each(function (i, el) {
                     var id = $(el).attr('id');

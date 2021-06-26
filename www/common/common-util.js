@@ -270,16 +270,8 @@
     Util.magnitudeOfBytes = function (bytes) {
         if (bytes >= oneGigabyte) { return 'GB'; }
         else if (bytes >= oneMegabyte) { return 'MB'; }
+        else { return 'KB'; }
     };
-
-    Util.getPrettySize = function (bytes, Messages) {
-        var unit = Util.magnitudeOfBytes(bytes);
-        if (unit === 'GB') {
-            return Messages._getKey('formattedGB', [Util.bytesToGigabytes(bytes)]);
-        }
-        return Messages._getKey('formattedMB', [Util.bytesToMegabytes(bytes)]);
-    };
-
 
     // given a path, asynchronously return an arraybuffer
     var getCacheKey = function (src) {
@@ -562,6 +554,16 @@
         return false;
     };
 
+    Util.isValidURL = function (str) {
+        var pattern = new RegExp('^(https?:\\/\\/)'+ // protocol
+            '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|'+ // domain name
+            '((\\d{1,3}\\.){3}\\d{1,3}))'+ // OR ip (v4) address
+            '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*'+ // port and path
+            '(\\?[;&a-z\\d%_.~+=-]*)?'); // query string
+            //'(\\#[-a-z\\d_]*)?$','i'); // fragment locator
+        return !!pattern.test(str);
+    };
+
     var emoji_patt = /([\uD800-\uDBFF][\uDC00-\uDFFF])/;
     var isEmoji = function (str) {
       return emoji_patt.test(str);
@@ -581,6 +583,18 @@
       if (!str || !str.trim()) { return '?'; }
       var emojis = emojiStringToArray(str);
       return isEmoji(emojis[0])? emojis[0]: str[0];
+    };
+
+    Util.getRandomColor = function (light) {
+        var getColor = function () {
+            if (light) {
+                return Math.floor(Math.random() * 156) + 70;
+            }
+            return Math.floor(Math.random() * 200) + 25;
+        };
+        return '#' + getColor().toString(16) +
+                     getColor().toString(16) +
+                     getColor().toString(16);
     };
 
     if (typeof(module) !== 'undefined' && module.exports) {

@@ -10,10 +10,11 @@ define([
     '/common/common-hash.js',
     '/common/hyperscript.js',
     '/customize/messages.js',
+    '/customize/pages.js',
 
     '/bower_components/file-saver/FileSaver.min.js',
     '/bower_components/tweetnacl/nacl-fast.min.js',
-], function ($, ApiConfig, FileCrypto, MakeBackup, Thumb, UI, UIElements, Util, Hash, h, Messages) {
+], function ($, ApiConfig, FileCrypto, MakeBackup, Thumb, UI, UIElements, Util, Hash, h, Messages, Pages) {
     var Nacl = window.nacl;
     var module = {};
 
@@ -32,7 +33,7 @@ define([
 
     module.create = function (common, config) {
         var File = {};
-        var origin = common.getMetadataMgr().getPrivateData().origin;
+        //var origin = common.getMetadataMgr().getPrivateData().origin;
         var response = Util.response(function (label, info) {
             console.error('COMMON_UPLOAD__' + label, info);
         });
@@ -124,6 +125,20 @@ define([
             var $pb = $row.find('.cp-fileupload-table-progressbar');
             var $link = $row.find('.cp-fileupload-table-link');
 
+            var privateData = common.getMetadataMgr().getPrivateData();
+            var l = privateData.plan ? ApiConfig.premiumUploadSize : false;
+            l = l || ApiConfig.maxUploadSize || "?";
+            var maxSizeStr = Util.bytesToMegabytes(l);
+            var estimate = FileCrypto.computeEncryptedSize((blob && blob.byteLength) || 0, metadata);
+            if (blob && blob.byteLength && typeof(estimate) === 'number' && typeof(l) === "number" && estimate > l) {
+                $pv.text(Messages.error);
+                queue.inProgress = false;
+                queue.next();
+                if (config.onError) { config.onError("TOO_LARGE"); }
+                return void UI.alert(Messages._getKey('upload_tooLargeBrief', [maxSizeStr]));
+            }
+
+
             /**
              * Update progress in the download panel, for uploading a file
              * @param {number} progressValue Progression of download, between 0 and 100
@@ -167,10 +182,6 @@ define([
                 if (config.onError) { config.onError(e); }
 
                 if (e === 'TOO_LARGE') {
-                    var privateData = common.getMetadataMgr().getPrivateData();
-                    var l = privateData.plan ? ApiConfig.premiumUploadSize : false;
-                    l = l || ApiConfig.maxUploadSize || '?';
-                    var maxSizeStr = Util.bytesToMegabytes(l);
                     $pv.text(Messages.error);
                     return void UI.alert(Messages._getKey('upload_tooLargeBrief', [maxSizeStr]));
                 }
@@ -288,7 +299,7 @@ define([
             store: true
         };
         var createHelper = function (href, text) {
-            return UI.createHelper(origin + href, text);
+            return UI.createHelper(href, text);
         };
         var createManualStore = function (isFolderUpload) {
             var privateData = common.getMetadataMgr().getPrivateData();
@@ -313,13 +324,13 @@ define([
                 UIElements.setHTML(h('label', {for: 'cp-upload-name'}),
                                    Messages._getKey('upload_modal_filename', [ext])),
                 h('input#cp-upload-name', {type: 'text', placeholder: defaultFileName, value: defaultFileName}),
-                h('label', {for: 'cp-upload-password'}, Messages.creation_passwordValue),
+                h('label', {for: 'cp-upload-password'}, Messages.addOptionalPassword),
                 UI.passwordInput({id: 'cp-upload-password'}),
                 h('span', {
                     style: 'display:flex;align-items:center;justify-content:space-between'
                 }, [
                     UI.createCheckbox('cp-upload-owned', Messages.upload_modal_owner, modalState.owned),
-                    createHelper('https://docs.cryptpad.fr/en/user_guide/share_and_access.html#owners', Messages.creation_owned1)
+                    createHelper(Pages.localizeDocsLink('https://docs.cryptpad.fr/en/user_guide/share_and_access.html#owners'), Messages.creation_owned1)
                 ]),
                 manualStore
             ]);
@@ -374,7 +385,7 @@ define([
                     style: 'display:flex;align-items:center;justify-content:space-between'
                 }, [
                     UI.createCheckbox('cp-upload-owned', Messages.uploadFolder_modal_owner, modalState.owned),
-                    createHelper('https://docs.cryptpad.fr/en/user_guide/share_and_access.html#owners', Messages.creation_owned1)
+                    createHelper(Pages.localizeDocsLink('https://docs.cryptpad.fr/en/user_guide/share_and_access.html#owners'), Messages.creation_owned1)
                 ]),
                 manualStore
             ]);
@@ -420,6 +431,11 @@ define([
             if (handleFileState.inProgress) { return void handleFileState.queue.push([file, e, defaultOptions]); }
             handleFileState.inProgress = true;
 
+            var type = file.type;
+            if (!file.type && /\.md$/.test(file.name)) {
+                type = "text/markdown";
+            }
+
             var thumb;
             var file_arraybuffer;
             var name = file.name;
@@ -430,7 +446,7 @@ define([
                 if (!abort) {
                     var metadata = {
                         name: name,
-                        type: file.type,
+                        type: type,
                     };
                     if (thumb) { metadata.thumbnail = thumb; }
                     queue.push({

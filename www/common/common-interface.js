@@ -388,6 +388,7 @@ define([
                 }));
         };
 
+        $t.closest('.tokenfield').removeClass('form-control');
         t.focus = function () {
             var $temp = $t.closest('.tokenfield').find('.token-input');
             $temp.css('width', '20%');
@@ -738,6 +739,7 @@ define([
             }
         });
     };
+    // TODO: make it such that the confirmButton's width does not change
     UI.confirmButton = function (originalBtn, config, _cb) {
         config = config || {};
         var cb = Util.mkAsync(_cb);
@@ -745,6 +747,7 @@ define([
             cb = Util.once(cb);
         }
         var classes = 'btn ' + (config.classes || 'btn-primary');
+        var newCls = config.new ? '.new' : '';
 
         var button = h('button', {
             "class": classes,
@@ -757,7 +760,7 @@ define([
         });
         var timer = h('div.cp-button-timer', div);
 
-        var content = h('div.cp-button-confirm', [
+        var content = h('div.cp-button-confirm'+newCls, [
             button,
             timer
         ]);
@@ -793,7 +796,8 @@ define([
             to = setTimeout(todo, INTERVAL);
         };
 
-        $(originalBtn).addClass('cp-button-confirm-placeholder').click(function (e) {
+        var newCls2 = config.new ? 'new' : '';
+        $(originalBtn).addClass('cp-button-confirm-placeholder').addClass(newCls2).click(function (e) {
             e.stopPropagation();
             // If we have a validation function, continue only if it's true
             if (config.validate && !config.validate()) { return; }
@@ -1173,6 +1177,7 @@ define([
         var label = h('span.cp-checkmark-label', labelTxt);
 
         $mark.keydown(function (e) {
+            if ($input.is(':disabled')) { return; }
             if (e.which === 32) {
                 e.stopPropagation();
                 e.preventDefault();
@@ -1218,20 +1223,22 @@ define([
         $.extend(markOpts, opts.mark || {});
 
         var input = h('input', inputOpts);
+        var $input = $(input);
         var mark = h('span.cp-radio-mark', markOpts);
         var label = h('span.cp-checkmark-label', labelTxt);
 
         $(mark).keydown(function (e) {
+            if ($input.is(':disabled')) { return; }
             if (e.which === 32) {
                 e.stopPropagation();
                 e.preventDefault();
-                if ($(input).is(':checked')) { return; }
-                $(input).prop('checked', !$(input).is(':checked'));
-                $(input).change();
+                if ($input.is(':checked')) { return; }
+                $input.prop('checked', !$input.is(':checked'));
+                $input.change();
             }
         });
 
-        $(input).change(function () { $(mark).focus(); });
+        $input.change(function () { $(mark).focus(); });
 
         var radio =  h('label', labelOpts, [
             input,
@@ -1256,18 +1263,18 @@ define([
             Messages.dontShowAgain
         ]);
 
+        var footerSel = 'div.cp-corner-footer';
         var popup = h('div.cp-corner-container', [
             setHTML(h('div.cp-corner-text'), text),
             h('div.cp-corner-actions', actions),
-            setHTML(h('div.cp-corner-footer'), footer),
+            (typeof(footer) === 'string'?
+                setHTML(h(footerSel), footer):
+                h(footerSel, footer)),
             opts.dontShowAgain ? dontShowAgain : undefined
         ]);
 
         var $popup = $(popup);
 
-        if (opts.hidden) {
-            $popup.addClass('cp-minimized');
-        }
         if (opts.big) {
             $popup.addClass('cp-corner-big');
         }
@@ -1432,13 +1439,13 @@ define([
     */
     UI.createDrawer = function ($button, $content) {
         $button.click(function () {
+            var topPos = $button[0].getBoundingClientRect().bottom;
             $content.toggle();
             $button.removeClass('cp-toolbar-button-active');
             if ($content.is(':visible')) {
                 $button.addClass('cp-toolbar-button-active');
                 $content.focus();
                 var wh = $(window).height();
-                var topPos = $button[0].getBoundingClientRect().bottom;
                 $content.css('max-height', Math.floor(wh - topPos - 1)+'px');
             }
         });

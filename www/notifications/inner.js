@@ -32,16 +32,16 @@ define([
     var sFrameChan;
 
     var categories = {
-        'all': [
+        'all': [ // Msg.notifications_cat_all
             'cp-notifications-all',
         ],
-        'friends': [
+        'friends': [ // Msg.notifications_cat_friends
             'cp-notifications-friends',
         ],
-        'pads': [
+        'pads': [ // Msg.notifications_cat_pads
             'cp-notifications-pads',
         ],
-        'archived': [
+        'archived': [ // Msg.notifications_cat_archived
             'cp-notifications-archived',
         ],
     };
@@ -202,7 +202,7 @@ define([
             var $category = $('<div>', {'class': 'cp-sidebarlayout-category'}).appendTo($categories);
             if (key === 'all') { $category.append($('<span>', {'class': 'fa fa-bars'})); }
             if (key === 'friends') { $category.append($('<span>', {'class': 'fa fa-user'})); }
-            if (key === 'pads') { $category.append($('<span>', {'class': 'cptools cptools-pad'})); }
+            if (key === 'pads') { $category.append($('<span>', {'class': 'cptools cptools-richtext'})); }
             if (key === 'archived') { $category.append($('<span>', {'class': 'fa fa-archive'})); }
 
             if (key === active) {

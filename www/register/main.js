@@ -10,26 +10,16 @@ define([
     '/common/common-constants.js',
     '/common/common-feedback.js',
     '/common/outer/local-store.js',
+    '/common/hyperscript.js',
 
     'css!/bower_components/components-font-awesome/css/font-awesome.min.css',
-], function ($, Login, Cryptpad, Test, Cred, UI, Util, Realtime, Constants, Feedback, LocalStore) {
+], function ($, Login, Cryptpad, Test, Cred, UI, Util, Realtime, Constants, Feedback, LocalStore, h) {
     var Messages = Cryptpad.Messages;
-
     $(function () {
-        var $main = $('#mainBlock');
-
-        // main block is hidden in case javascript is disabled
-        $main.removeClass('hidden');
-
-        // Make sure we don't display non-translated content (empty button)
-        $main.find('#data').removeClass('hidden');
-
         if (LocalStore.isLoggedIn()) {
             // already logged in, redirect to drive
             document.location.href = '/drive/';
             return;
-        } else {
-            $main.find('#userForm').removeClass('hidden');
         }
 
         // text and password input fields
@@ -100,7 +90,16 @@ define([
             }
 
             setTimeout(function () {
-            UI.confirm("<h2 class='msg'>" + Messages.register_warning + "</h2>" + Messages.register_warning_note,
+                var span = h('span', [
+                    h('h2', [
+                        h('i.fa.fa-warning'),
+                        ' ',
+                        Messages.register_warning,
+                    ]),
+                    Messages.register_warning_note
+                ]);
+
+            UI.confirm(span,
             function (yes) {
                 if (!yes) { return; }
 
@@ -124,7 +123,7 @@ define([
                 done: function ($dialog) {
                     $dialog.find('> div').addClass('half');
                 },
-            }, true);
+            });
             }, 150);
         };
 

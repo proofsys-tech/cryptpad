@@ -76,7 +76,7 @@ define([
             postMessage("GET", {
                 key: ['edPrivate'],
             }, waitFor(function (obj) {
-                if (obj.error) { return; }
+                if (!obj || obj.error) { return; }
                 try {
                     keys.push({
                         edPrivate: obj,
@@ -84,14 +84,21 @@ define([
                     });
                 } catch (e) { console.error(e); }
             }));
+
             // Push teams keys
             postMessage("GET", {
                 key: ['teams'],
             }, waitFor(function (obj) {
-                if (obj.error) { return; }
+                if (!obj || obj.error) { return; }
                 Object.keys(obj || {}).forEach(function (id) {
                     var t = obj[id];
-                    var _keys = t.keys.drive || {};
+                    var _keys = {};
+                    try {
+                        _keys = t.keys.drive || {};
+                    } catch (err) {
+                        console.error(err);
+                    }
+                    _keys.id = id;
                     if (!_keys.edPrivate) { return; }
                     keys.push(t.keys.drive);
                 });
@@ -99,6 +106,57 @@ define([
         }).nThen(function () {
             cb(keys);
         });
+    };
+
+    common.getFormKeys = function (cb) {
+        var curvePrivate;
+        var formSeed;
+        Nthen(function (waitFor) {
+            postMessage("GET", {
+                key: ['curvePrivate'],
+            }, waitFor(function (obj) {
+                if (!obj || obj.error) { return; }
+                curvePrivate = obj;
+            }));
+            postMessage("GET", {
+                key: ['form_seed'],
+            }, waitFor(function (obj) {
+                if (!obj || obj.error) { return; }
+                formSeed = obj;
+            }));
+        }).nThen(function () {
+            cb({
+                curvePrivate: curvePrivate,
+                curvePublic: curvePrivate && Hash.getCurvePublicFromPrivate(curvePrivate),
+                formSeed: formSeed
+            });
+        });
+    };
+    common.getFormAnswer = function (data, cb) {
+        postMessage("GET", {
+            key: ['forms', data.channel],
+        }, cb);
+    };
+    common.storeFormAnswer = function (data) {
+        postMessage("SET", {
+            key: ['forms', data.channel],
+            value: {
+                hash: data.hash,
+                curvePrivate: data.curvePrivate,
+                anonymous: data.anonymous
+            }
+        }, function (obj) {
+            if (obj && obj.error) {
+                if (obj.error === "ENODRIVE") {
+                    var answered = JSON.parse(localStorage.CP_formAnswered || "[]");
+                    if (answered.indexOf(data.channel) === -1) { answered.push(data.channel); }
+                    localStorage.CP_formAnswered = JSON.stringify(answered);
+                    return;
+                }
+                console.error(obj.error);
+            }
+        });
+
     };
 
     common.makeNetwork = function (cb) {
@@ -231,17 +289,6 @@ define([
             anonHash: LocalStore.getFSHash()
         };
         postMessage("MIGRATE_ANON_DRIVE", data, cb);
-    };
-    // Settings
-    common.deleteAccount = function (cb) {
-        postMessage("DELETE_ACCOUNT", null, function (obj) {
-            if (obj.state) {
-                Feedback.send('DELETE_ACCOUNT_AUTOMATIC');
-            } else {
-                Feedback.send('DELETE_ACCOUNT_MANUAL');
-            }
-            cb(obj);
-        });
     };
     // Drive
     common.userObjectCommand = function (data, cb) {
@@ -492,10 +539,20 @@ define([
         });
     };
 
+    common.isNewChannel = function (href, password, _cb) {
+        var cb = Util.once(Util.mkAsync(_cb));
+        var channel = Hash.hrefToHexChannelId(href, password);
+        postMessage('IS_NEW_CHANNEL', {channel: channel}, function (obj) {
+            var error = obj && obj.error;
+            if (error) { return void cb(error); }
+            if (!obj) { return void cb('ERROR'); }
+            cb (null, obj.isNew);
+        }, {timeout: -1});
+    };
     // This function is used when we want to open a pad. We first need
     // to check if it exists. With the cached drive, we need to wait for
     // the network to be available before we can continue.
-    common.isNewChannel = function (href, password, _cb) {
+    common.hasChannelHistory = function (href, password, _cb) {
         var cb = Util.once(Util.mkAsync(_cb));
         var channel = Hash.hrefToHexChannelId(href, password);
         var error;
@@ -713,6 +770,10 @@ define([
             delete meta.chat2;
             delete meta.chat;
             delete meta.cursor;
+
+            if (meta.type === "form") {
+                delete parsed.answers;
+            }
         }
     };
 
@@ -1037,13 +1098,6 @@ define([
     };
     onlyoffice.onEvent = Util.mkEvent();
 
-    // Cursor
-    var cursor = common.cursor = {};
-    cursor.execCommand = function (data, cb) {
-        postMessage("CURSOR_COMMAND", data, cb);
-    };
-    cursor.onEvent = Util.mkEvent();
-
     // Mailbox
     var mailbox = common.mailbox = {};
     mailbox.execCommand = function (data, cb) {
@@ -1111,8 +1165,14 @@ define([
         postMessage('BURN_PAD', data);
     };
 
+    common.setDriveRedirectPreference = function (data, cb) {
+        LocalStore.setDriveRedirectPreference(data && data.value);
+        cb();
+    };
+
     common.changePadPassword = function (Crypt, Crypto, data, cb) {
         var href = data.href;
+        var oldPassword = data.oldPassword;
         var newPassword = data.password;
         var teamId = data.teamId;
         if (!href) { return void cb({ error: 'EINVAL_HREF' }); }
@@ -1141,7 +1201,9 @@ define([
 
         var isSharedFolder = parsed.type === 'drive';
 
-        var optsGet = {};
+        var optsGet = {
+            password: oldPassword
+        };
         var optsPut = {
             password: newPassword,
             metadata: {},
@@ -1151,7 +1213,7 @@ define([
         var cryptgetVal;
 
         Nthen(function (waitFor) {
-            if (parsed.hashData && parsed.hashData.password) {
+            if (parsed.hashData && parsed.hashData.password && !oldPassword) {
                 common.getPadAttribute('password', waitFor(function (err, password) {
                     optsGet.password = password;
                 }), href);
@@ -1197,7 +1259,6 @@ define([
                 } else if (mailbox && typeof(mailbox) === "object") {
                     m = {};
                     Object.keys(mailbox).forEach(function (ed) {
-                        console.log(mailbox[ed]);
                         try {
                             m[ed] = newCrypto.encrypt(oldCrypto.decrypt(mailbox[ed], true, true));
                         } catch (e) {
@@ -1232,6 +1293,7 @@ define([
                     cryptgetVal = JSON.stringify(parsed);
                 }
             }), optsGet);
+            Cache.clearChannel(newSecret.channel, waitFor());
         }).nThen(function (waitFor) {
             optsPut.metadata.restricted = oldMetadata.restricted;
             optsPut.metadata.allowed = oldMetadata.allowed;
@@ -1436,6 +1498,7 @@ define([
     common.changeOOPassword = function (data, _cb) {
         var cb = Util.once(Util.mkAsync(_cb));
         var href = data.href;
+        var oldPassword = data.oldPassword;
         var newPassword = data.password;
         var teamId = data.teamId;
         if (!href) { return void cb({ error: 'EINVAL_HREF' }); }
@@ -1449,7 +1512,6 @@ define([
         var oldMetadata;
         var oldRtChannel;
         var privateData;
-        var padData;
 
         var newSecret;
         if (parsed.hashData.version >= 2) {
@@ -1470,19 +1532,22 @@ define([
                 validateKey: newSecret.keys.validateKey
             },
         };
-        var optsGet = {};
+        var optsGet = {
+            password: oldPassword
+        };
 
         Nthen(function (waitFor) {
             common.getPadAttribute('', waitFor(function (err, _data) {
-                padData = _data;
-                optsGet.password = padData.password;
+                if (!oldPassword && _data) {
+                    optsGet.password = _data.password;
+                }
             }), href);
             common.getAccessKeys(waitFor(function (keys) {
                 optsGet.accessKeys = keys;
                 optsPut.accessKeys = keys;
             }));
         }).nThen(function (waitFor) {
-            oldSecret = Hash.getSecrets(parsed.type, parsed.hash, padData.password);
+            oldSecret = Hash.getSecrets(parsed.type, parsed.hash, optsGet.password);
 
             require([
                 '/common/cryptget.js',
@@ -1610,6 +1675,7 @@ define([
                     }
                 }));
             }));
+            Cache.clearChannel(newSecret.channel, waitFor());
         }).nThen(function (waitFor) {
             // The new rt channel is ready
             // The blob uses its own encryption and doesn't need to be reencrypted
@@ -1674,6 +1740,80 @@ define([
     };
 
 
+    var getBlockKeys = function (data, cb) {
+        var accountName = LocalStore.getAccountName();
+        var password = data.password;
+        var Cred, Block, Login;
+        var blockKeys;
+
+        var hash = LocalStore.getUserHash();
+        if (!hash) { return void cb({ error: 'E_NOT_LOGGED_IN' }); }
+        var blockHash = LocalStore.getBlockHash();
+
+        Nthen(function (waitFor) {
+            require([
+                '/common/common-credential.js',
+                '/common/outer/login-block.js',
+                '/customize/login.js'
+            ], waitFor(function (_Cred, _Block, _Login) {
+                Cred = _Cred;
+                Block = _Block;
+                Login = _Login;
+            }));
+        }).nThen(function (waitFor) {
+            // confirm that the provided password is correct
+            Cred.deriveFromPassphrase(accountName, password, Login.requiredBytes,
+                                      waitFor(function (bytes) {
+                var allocated = Login.allocateBytes(bytes);
+                blockKeys = allocated.blockKeys;
+                if (blockHash) {
+                    if (blockHash !== allocated.blockHash) {
+                        // incorrect password
+                        console.log("provided password did not yield the correct blockHash");
+                        waitFor.abort();
+                        return void cb({ error: 'INVALID_PASSWORD', });
+                    }
+                } else {
+                    // otherwise they're a legacy user, and we should check against the User_hash
+                    if (hash !== allocated.userHash) {
+                        // incorrect password
+                        console.log("provided password did not yield the correct userHash");
+                        waitFor.abort();
+                        return void cb({ error: 'INVALID_PASSWORD', });
+                    }
+                }
+            }));
+        }).nThen(function () {
+            cb({
+                Cred: Cred,
+                Block: Block,
+                Login: Login,
+                blockKeys: blockKeys
+            });
+        });
+    };
+    common.deleteAccount = function (data, cb) {
+        data = data || {};
+
+        // Confirm that the provided password is corrct and get the block keys
+        getBlockKeys(data, function (obj) {
+            if (obj && obj.error) { return void cb(obj); }
+            var blockKeys = obj.blockKeys;
+            var removeData = obj.Block.remove(blockKeys);
+
+            postMessage("DELETE_ACCOUNT", {
+                keys: Block.keysToRPCFormat(blockKeys),
+                removeData: removeData
+            }, function (obj) {
+                if (obj.state) {
+                    Feedback.send('DELETE_ACCOUNT_AUTOMATIC');
+                } else {
+                    Feedback.send('DELETE_ACCOUNT_MANUAL');
+                }
+                cb(obj);
+            });
+        });
+    };
     common.changeUserPassword = function (Crypt, edPublic, data, cb) {
         if (!edPublic) {
             return void cb({
@@ -1699,40 +1839,15 @@ define([
 
         var Cred, Block, Login;
         Nthen(function (waitFor) {
-            require([
-                '/common/common-credential.js',
-                '/common/outer/login-block.js',
-                '/customize/login.js'
-            ], waitFor(function (_Cred, _Block, _Login) {
-                Cred = _Cred;
-                Block = _Block;
-                Login = _Login;
-            }));
-        }).nThen(function (waitFor) {
-            // confirm that the provided password is correct
-            Cred.deriveFromPassphrase(accountName, password, Login.requiredBytes, waitFor(function (bytes) {
-                var allocated = Login.allocateBytes(bytes);
-                oldBlockKeys = allocated.blockKeys;
-                if (blockHash) {
-                    if (blockHash !== allocated.blockHash) {
-                        console.log("provided password did not yield the correct blockHash");
-                        // incorrect password probably
-                        waitFor.abort();
-                        return void cb({
-                            error: 'INVALID_PASSWORD',
-                        });
-                    }
-                    // the user has already created a block, so you should compare against that
-                } else {
-                    // otherwise they're a legacy user, and we should check against the User_hash
-                    if (hash !== allocated.userHash) {
-                        console.log("provided password did not yield the correct userHash");
-                        waitFor.abort();
-                        return void cb({
-                            error: 'INVALID_PASSWORD',
-                        });
-                    }
+            getBlockKeys(data, waitFor(function (obj) {
+                if (obj && obj.error) {
+                    waitFor.abort();
+                    return void cb(obj);
                 }
+                oldBlockKeys = obj.blockKeys;
+                Cred = obj.Cred;
+                Login = obj.Login;
+                Block = obj.Block;
             }));
         }).nThen(function (waitFor) {
             // Check if our drive is already owned
@@ -1808,9 +1923,16 @@ define([
             };
 
             var content = Block.serialize(JSON.stringify(temp), blockKeys);
+            console.error("OLD AND NEW BLOCK KEYS", oldBlockKeys, blockKeys);
+            content.registrationProof = Block.proveAncestor(oldBlockKeys);
 
             console.log("writing new login block");
-            common.writeLoginBlock(content, waitFor(function (obj) {
+
+            var data = {
+                keys: Block.keysToRPCFormat(blockKeys),
+                content: content,
+            };
+            common.writeLoginBlock(data, waitFor(function (obj) {
                 if (obj && obj.error) {
                     waitFor.abort();
                     return void cb(obj);
@@ -1828,8 +1950,11 @@ define([
             // Remove block hash
             if (blockHash) {
                 console.log('removing old login block');
-                var removeData = Block.remove(oldBlockKeys);
-                common.removeLoginBlock(removeData, waitFor(function (obj) {
+                var data = {
+                    keys: Block.keysToRPCFormat(oldBlockKeys), // { edPrivate, edPublic }
+                    content: Block.remove(oldBlockKeys),
+                };
+                common.removeLoginBlock(data, waitFor(function (obj) {
                     if (obj && obj.error) { return void console.error(obj.error); }
                 }));
             }
@@ -1981,7 +2106,6 @@ define([
         });
     };
 
-
     var provideFeedback = function () {
         if (typeof(window.Proxy) === 'undefined') {
             Feedback.send("NO_PROXIES");
@@ -2018,7 +2142,6 @@ define([
         if (!common.hasCSSVariables()) {
             Feedback.send('NO_CSS_VARIABLES');
         }
-
         Feedback.reportScreenDimensions();
         Feedback.reportLanguage();
     };
@@ -2101,8 +2224,6 @@ define([
         },
         // OnlyOffice
         OO_EVENT: common.onlyoffice.onEvent.fire,
-        // Cursor
-        CURSOR_EVENT: common.cursor.onEvent.fire,
         // Mailbox
         MAILBOX_EVENT: common.mailbox.onEvent.fire,
         // Universal
@@ -2243,8 +2364,10 @@ define([
                 localToken: tryParsing(localStorage.getItem(Constants.tokenKey)), // TODO move this to LocalStore ?
                 language: common.getLanguage(),
                 cache: rdyCfg.cache,
+                noDrive: rdyCfg.noDrive,
                 disableCache: localStorage['CRYPTPAD_STORE|disableCache'],
-                driveEvents: true //rdyCfg.driveEvents // Boolean
+                driveEvents: !rdyCfg.noDrive, //rdyCfg.driveEvents // Boolean
+                lastVisit: Number(localStorage.lastVisit) || undefined
             };
             common.userHash = userHash;
 
@@ -2271,6 +2394,7 @@ define([
 
 
             var channelIsReady = waitFor();
+            updateLocalVersion();
 
             var msgEv = Util.mkEvent();
             var postMsg, worker;
@@ -2328,7 +2452,12 @@ define([
                     };
                     postMsg('INIT');
 
+                    /*
                     window.addEventListener('beforeunload', function () {
+                        postMsg('CLOSE');
+                    });
+                    */
+                    window.addEventListener('unload', function () {
                         postMsg('CLOSE');
                     });
                 } else if (false && !noWorker && !noSharedWorker && 'serviceWorker' in navigator) {
@@ -2439,7 +2568,15 @@ define([
                             data = data.returned;
                         }
 
+                        if (data.loggedIn) {
+                            window.CP_logged_in = true;
+                        }
                         if (data.anonHash && !cfg.userHash) { LocalStore.setFSHash(data.anonHash); }
+
+                        var prefersDriveRedirect = data[Constants.prefersDriveRedirectKey];
+                        if (typeof(prefersDriveRedirect) === 'boolean') {
+                            LocalStore.setDriveRedirectPreference(prefersDriveRedirect);
+                        }
 
                         initialized = true;
                         channelIsReady();
@@ -2470,6 +2607,24 @@ define([
                 }
                 if (parsedNew.hashData) { oldHref = newHref; }
             };
+            // If you're in noDrive mode, check if an FS_hash is added and reload if that's the case
+            if (rdyCfg.noDrive && !localStorage[Constants.fileHashKey]) {
+                window.addEventListener('storage', function (e) {
+                    if (e.key !== Constants.fileHashKey) { return; }
+                    // New entry added to FS_hash: drive created in another tab, reload
+                    var o = e.oldValue;
+                    var n = e.newValue;
+                    if (!o && n) {
+                        postMessage('HAS_DRIVE', null, function(obj) {
+                            // If we're still in noDrive mode, reload
+                            if (!obj.state) {
+                                LocalStore.loginReload();
+                            }
+                            // Otherwise this worker is connected, nothing to do
+                        });
+                    }
+                });
+            }
             // Listen for login/logout in other tabs
             window.addEventListener('storage', function (e) {
                 if (e.key !== Constants.userHashKey) { return; }
@@ -2486,16 +2641,6 @@ define([
                 postMessage("DISCONNECT");
             });
         }).nThen(function (waitFor) {
-            if (common.createReadme || sessionStorage.createReadme) {
-                var data = {
-                    driveReadme: Messages.driveReadme,
-                    driveReadmeTitle: Messages.driveReadmeTitle,
-                };
-                postMessage("CREATE_README", data, waitFor(function (e) {
-                    if (e && e.error) { return void console.error(e.error); }
-                }));
-            }
-        }).nThen(function (waitFor) {
             if (common.migrateAnonDrive || sessionStorage.migrateAnonDrive) {
                 common.mergeAnonDrive(waitFor());
             }
@@ -2504,7 +2649,12 @@ define([
                 AppConfig.afterLogin(common, waitFor());
             }
         }).nThen(function () {
-            updateLocalVersion();
+            // Last visit is used to warn you about missed events from your calendars
+            localStorage.lastVisit = +new Date();
+            setInterval(function () {
+                // Bump last visit every minute
+                localStorage.lastVisit = +new Date();
+            }, 60000);
             f(void 0, env);
             if (typeof(window.onhashchange) === 'function') { window.onhashchange(); }
         });

@@ -4,7 +4,6 @@
 var Express = require('express');
 var Http = require('http');
 var Fs = require('fs');
-var Package = require('./package.json');
 var Path = require("path");
 var nThen = require("nthen");
 var Util = require("./lib/common-util");
@@ -16,15 +15,18 @@ var Env = require("./lib/env").create(config);
 
 var app = Express();
 
-(function () {
-    // you absolutely must provide an 'httpUnsafeOrigin'
-    if (typeof(config.httpUnsafeOrigin) !== 'string') {
-        throw new Error("No 'httpUnsafeOrigin' provided");
-    }
+var fancyURL = function (domain, path) {
+    try {
+        if (domain && path) { return new URL(path, domain).href; }
+        return new URL(domain);
+    } catch (err) {}
+    return false;
+};
 
-    config.httpUnsafeOrigin = config.httpUnsafeOrigin.trim();
-    if (typeof(config.httpSafeOrigin) === 'string') {
-        config.httpSafeOrigin = config.httpSafeOrigin.trim().replace(/\/$/, '');
+(function () {
+    // you absolutely must provide an 'httpUnsafeOrigin' (a truthy string)
+    if (!Env.httpUnsafeOrigin || typeof(Env.httpUnsafeOrigin) !== 'string') {
+        throw new Error("No 'httpUnsafeOrigin' provided");
     }
 
     // fall back to listening on a local address
@@ -38,25 +40,11 @@ var app = Express();
         config.httpPort = 3000;
     }
 
-    if (typeof(config.httpSafeOrigin) !== 'string') {
+    if (typeof(Env.httpSafeOrigin) !== 'string') {
+        Env.NO_SANDBOX = true;
         if (typeof(config.httpSafePort) !== 'number') {
             config.httpSafePort = config.httpPort + 1;
         }
-
-        if (Env.DEV_MODE) { return; }
-        console.log(`
-    m     m   mm   mmmmm  mm   m mmmmm  mm   m   mmm    m
-    #  #  #   ##   #   "# #"m  #   #    #"m  # m"   "   #
-    " #"# #  #  #  #mmmm" # #m #   #    # #m # #   mm   #
-     ## ##"  #mm#  #   "m #  # #   #    #  # # #    #
-     #   #  #    # #    " #   ## mm#mm  #   ##  "mmm"   #
-`);
-
-        console.log("\nNo 'httpSafeOrigin' provided.");
-        console.log("Your configuration probably isn't taking advantage of all of CryptPad's security features!");
-        console.log("This is acceptable for development, otherwise your users may be at risk.\n");
-
-        console.log("Serving sandboxed content via port %s.\nThis is probably not what you want for a production instance!\n", config.httpSafePort);
     }
 }());
 
@@ -89,28 +77,43 @@ var setHeaders = (function () {
         }
     } else {
         // use the default CSP headers constructed with your domain
-        headers['Content-Security-Policy'] = Default.contentSecurity(config.httpUnsafeOrigin);
+        headers['Content-Security-Policy'] = Default.contentSecurity(Env.httpUnsafeOrigin);
     }
 
     const padHeaders = Util.clone(headers);
     if (typeof(config.padContentSecurity) === 'string') {
         padHeaders['Content-Security-Policy'] = config.padContentSecurity;
     } else {
-        padHeaders['Content-Security-Policy'] = Default.padContentSecurity(config.httpUnsafeOrigin);
+        padHeaders['Content-Security-Policy'] = Default.padContentSecurity(Env.httpUnsafeOrigin);
     }
     if (Object.keys(headers).length) {
         return function (req, res) {
             // apply a bunch of cross-origin headers for XLSX export in FF and printing elsewhere
             applyHeaderMap(res, {
-                "Cross-Origin-Resource-Policy": 'cross-origin',
                 "Cross-Origin-Opener-Policy": /^\/sheet\//.test(req.url)? 'same-origin': '',
-                "Cross-Origin-Embedder-Policy": 'require-corp',
+            });
+
+            if (Env.NO_SANDBOX) { // handles correct configuration for local development
+            // https://stackoverflow.com/questions/11531121/add-duplicate-http-response-headers-in-nodejs
+                applyHeaderMap(res, {
+                    "Cross-Origin-Resource-Policy": 'cross-origin',
+                    "Cross-Origin-Embedder-Policy": 'require-corp',
+                });
+            }
+
+            // Don't set CSP headers on /api/ endpoints
+            // because they aren't necessary and they cause problems
+            // when duplicated by NGINX in production environments
+            if (/^\/api\/(broadcast|config)/.test(req.url)) { return; }
+
+            applyHeaderMap(res, {
+                "Cross-Origin-Resource-Policy": 'cross-origin',
             });
 
             // targeted CSP, generic policies, maybe custom headers
             const h = [
                     /^\/common\/onlyoffice\/.*\/index\.html.*/,
-                    /^\/(sheet|ooslide|oodoc)\/inner\.html.*/,
+                    /^\/(sheet|presentation|doc)\/inner\.html.*/,
                 ].some((regex) => {
                     return regex.test(req.url);
                 }) ? padHeaders : headers;
@@ -138,7 +141,7 @@ app.head(/^\/common\/feedback\.html/, function (req, res, next) {
 
 app.use('/blob', function (req, res, next) {
     if (req.method === 'HEAD') {
-        Express.static(Path.join(__dirname, (config.blobPath || './blob')), {
+        Express.static(Path.join(__dirname, Env.paths.blob), {
             setHeaders: function (res, path, stat) {
                 res.set('Access-Control-Allow-Origin', '*');
                 res.set('Access-Control-Allow-Headers', 'Content-Length');
@@ -178,13 +181,13 @@ var mainPagePattern = new RegExp('^\/(' + mainPages.join('|') + ').html$');
 app.get(mainPagePattern, Express.static(__dirname + '/customize'));
 app.get(mainPagePattern, Express.static(__dirname + '/customize.dist'));
 
-app.use("/blob", Express.static(Path.join(__dirname, (config.blobPath || './blob')), {
+app.use("/blob", Express.static(Path.join(__dirname, Env.paths.blob), {
     maxAge: Env.DEV_MODE? "0d": "365d"
 }));
-app.use("/datastore", Express.static(Path.join(__dirname, (config.filePath || './datastore')), {
+app.use("/datastore", Express.static(Path.join(__dirname, Env.paths.data), {
     maxAge: "0d"
 }));
-app.use("/block", Express.static(Path.join(__dirname, (config.blockPath || '/block')), {
+app.use("/block", Express.static(Path.join(__dirname, Env.paths.block), {
     maxAge: "0d",
 }));
 
@@ -194,46 +197,14 @@ app.use("/customize.dist", Express.static(__dirname + '/customize.dist'));
 app.use(/^\/[^\/]*$/, Express.static('customize'));
 app.use(/^\/[^\/]*$/, Express.static('customize.dist'));
 
-var serveConfig = (function () {
-    // if dev mode: never cache
-    var cacheString = function () {
-        return (Env.FRESH_KEY? '-' + Env.FRESH_KEY: '') + (Env.DEV_MODE? '-' + (+new Date()): '');
-    };
+// if dev mode: never cache
+var cacheString = function () {
+    return (Env.FRESH_KEY? '-' + Env.FRESH_KEY: '') + (Env.DEV_MODE? '-' + (+new Date()): '');
+};
 
-    var template = function (host) {
-        return [
-            'define(function(){',
-            'var obj = ' + JSON.stringify({
-                requireConf: {
-                    waitSeconds: 600,
-                    urlArgs: 'ver=' + Package.version + cacheString(),
-                },
-                removeDonateButton: (config.removeDonateButton === true),
-                allowSubscriptions: (config.allowSubscriptions === true),
-                websocketPath: config.externalWebsocketURL,
-                httpUnsafeOrigin: config.httpUnsafeOrigin,
-                adminEmail: Env.adminEmail,
-                adminKeys: Env.admins,
-                inactiveTime: Env.inactiveTime,
-                supportMailbox: Env.supportMailbox,
-                defaultStorageLimit: Env.defaultStorageLimit,
-                maxUploadSize: Env.maxUploadSize,
-                premiumUploadSize: Env.premiumUploadSize,
-            }, null, '\t'),
-            'obj.httpSafeOrigin = ' + (function () {
-                if (config.httpSafeOrigin) { return '"' + config.httpSafeOrigin + '"'; }
-                if (config.httpSafePort) {
-                    return "(function () { return window.location.origin.replace(/\:[0-9]+$/, ':" +
-                        config.httpSafePort + "'); }())";
-                }
-                return 'window.location.origin';
-            }()),
-            'return obj',
-            '});'
-        ].join(';\n')
-    };
-
+var makeRouteCache = function (template, cacheName) {
     var cleanUp = {};
+    var cache = Env[cacheName] = Env[cacheName] || {};
 
     return function (req, res) {
         var host = req.headers.host.replace(/\:[0-9]+/, '');
@@ -248,24 +219,75 @@ var serveConfig = (function () {
         // FIXME mutable
         // we must be able to clear the cache when updating any mutable key
         // if there's nothing cached for that key...
-        if (!Env.configCache[cacheKey]) {
+        if (!cache[cacheKey]) {
             // generate the response and cache it in memory
-            Env.configCache[cacheKey] = template(host);
+            cache[cacheKey] = template(host);
             // and create a function to conditionally evict cache entries
             // which have not been accessed in the last 20 seconds
             cleanUp[cacheKey] = Util.throttle(function () {
                 delete cleanUp[cacheKey];
-                delete Env.configCache[cacheKey];
+                delete cache[cacheKey];
             }, 20000);
         }
 
         // successive calls to this function
         cleanUp[cacheKey]();
-        return void res.send(Env.configCache[cacheKey]);
+        return void res.send(cache[cacheKey]);
     };
-}());
+};
+
+var serveConfig = makeRouteCache(function (host) {
+    return [
+        'define(function(){',
+        'var obj = ' + JSON.stringify({
+            requireConf: {
+                waitSeconds: 600,
+                urlArgs: 'ver=' + Env.version + cacheString(),
+            },
+            removeDonateButton: (Env.removeDonateButton === true),
+            allowSubscriptions: (Env.allowSubscriptions === true),
+            websocketPath: config.externalWebsocketURL,
+            httpUnsafeOrigin: Env.httpUnsafeOrigin,
+            adminEmail: Env.adminEmail,
+            adminKeys: Env.admins,
+            inactiveTime: Env.inactiveTime,
+            supportMailbox: Env.supportMailbox,
+            defaultStorageLimit: Env.defaultStorageLimit,
+            maxUploadSize: Env.maxUploadSize,
+            premiumUploadSize: Env.premiumUploadSize,
+            restrictRegistration: Env.restrictRegistration,
+        }, null, '\t'),
+        'obj.httpSafeOrigin = ' + (function () {
+            if (Env.httpSafeOrigin) { return '"' + Env.httpSafeOrigin + '"'; }
+            if (config.httpSafePort) {
+                return "(function () { return window.location.origin.replace(/\:[0-9]+$/, ':" +
+                    config.httpSafePort + "'); }())";
+            }
+            return 'window.location.origin';
+        }()),
+        'return obj',
+        '});'
+    ].join(';\n')
+}, 'configCache');
+
+var serveBroadcast = makeRouteCache(function (host) {
+    var maintenance = Env.maintenance;
+    if (maintenance && maintenance.end && maintenance.end < (+new Date())) {
+        maintenance = undefined;
+    }
+    return [
+        'define(function(){',
+        'return ' + JSON.stringify({
+            lastBroadcastHash: Env.lastBroadcastHash,
+            surveyURL: Env.surveyURL,
+            maintenance: maintenance
+        }, null, '\t'),
+        '});'
+    ].join(';\n')
+}, 'broadcastCache');
 
 app.get('/api/config', serveConfig);
+app.get('/api/broadcast', serveBroadcast);
 
 var four04_path = Path.resolve(__dirname + '/customize.dist/404.html');
 var custom_four04_path = Path.resolve(__dirname + '/customize/404.html');
@@ -299,7 +321,19 @@ nThen(function (w) {
         var port = config.httpPort;
         var ps = port === 80? '': ':' + port;
 
-        console.log('[%s] server available http://%s%s', new Date().toISOString(), hostName, ps);
+        var roughAddress = 'http://' + hostName + ps;
+        var betterAddress = fancyURL(Env.httpUnsafeOrigin);
+
+        if (betterAddress) {
+            console.log('Serving content for %s via %s.\n', betterAddress, roughAddress);
+        } else {
+            console.log('Serving content via %s.\n', roughAddress);
+        }
+        if (!Env.admins.length) {
+            console.log("Your instance is not correctly configured for safe use in production.\nSee %s for more information.\n",
+                fancyURL(Env.httpUnsafeOrigin, '/checkup/') || 'https://your-domain.com/checkup/'
+            );
+        }
     });
 
     if (config.httpSafePort) {

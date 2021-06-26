@@ -1,6 +1,7 @@
 define([
     'jquery',
     '/api/config',
+    '/api/broadcast',
     '/common/common-util.js',
     '/common/common-hash.js',
     '/common/common-language.js',
@@ -17,27 +18,31 @@ define([
     '/common/visible.js',
 
     'css!/customize/fonts/cptools/style.css',
-], function ($, Config, Util, Hash, Language, UI, Constants, Feedback, h, Clipboard,
+], function ($, Config, Broadcast, Util, Hash, Language, UI, Constants, Feedback, h, Clipboard,
              Messages, AppConfig, Pages, NThen, InviteInner, Visible) {
     var UIElements = {};
     var urlArgs = Config.requireConf.urlArgs;
 
     UIElements.getSvgLogo = function () {
         var svg = (function(){/*
-<svg width="45" height="50" version="1.1" viewBox="0 0 11.906 13.229" xmlns="http://www.w3.org/2000/svg" xmlns:osb="http://www.openswatchbook.org/uri/2009/osb">
- <path id="squares" d="m1.1842 0.63976 0.078593 5.614h4.693l5.844e-4 -5.614zm4.7749 5.614 4.383e-4 6.2231c1.8161-0.83261 4.6393-2.4183 4.691-6.1113l0.0016-0.11174z" fill-opacity=".39608"/>
- <path id="outline" d="m0.80493 0.26501 0.004684 0.37943 0.079911 6.475c0.024028 1.9418 0.81004 3.2247 1.8144 4.0729 1.0043 0.84824 2.2063 1.2937 3.0935 1.7018l0.16787 0.0775 0.16377-0.08657c0.7899-0.41719 1.9998-0.86054 3.028-1.6991 1.0282-0.83852 1.8614-2.1164 1.8614-4.0713v-3.689l-3.4016-3.1607zm0.75864 0.74949h5.2426v3.1854h3.4628v2.9148c0 1.7505-0.68311 2.7546-1.5854 3.4905-0.84909 0.69243-1.8906 1.1058-2.7348 1.5342-0.89552-0.40429-1.9335-0.8206-2.7611-1.5196-0.87538-0.73932-1.5269-1.7585-1.5485-3.5098zm5.9918 0.21646 2.3888 2.2196h-2.3888z" color="#000000" color-rendering="auto" dominant-baseline="auto" image-rendering="auto" shape-rendering="auto" solid-color="#000000" stop-color="#000000" style="font-feature-settings:normal;font-variant-alternates:normal;font-variant-caps:normal;font-variant-east-asian:normal;font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-position:normal;font-variation-settings:normal;inline-size:0;isolation:auto;mix-blend-mode:normal;shape-margin:0;shape-padding:0;text-decoration-color:#000000;text-decoration-line:none;text-decoration-style:solid;text-indent:0;text-orientation:mixed;text-transform:none;white-space:normal"/>
- <path id="keyhole" d="m5.9073 4.8889a1.2769 1.2769 0 0 0-1.276 1.277 1.2769 1.2769 0 0 0 0.72454 1.1513l-0.4458 2.3541h1.9965l-0.4458-2.3541a1.2769 1.2769 0 0 0 0.72447-1.1512 1.2769 1.2769 0 0 0-1.2769-1.277 1.2769 1.2769 0 0 0-9.488e-4 0z" />
+<svg width="45" height="50" version="1.1" viewBox="0 0 11.906 13.229" xmlns="http://www.w3.org/2000/svg">
+ <path id="background" d="m1.0914 0.43939h6.464l3.2642 3.0329v3.6261c0 3.8106-3.1186 4.6934-4.8229 5.5936-1.8663-0.85843-4.7759-1.7955-4.8229-5.5936z" style="stroke-width:0"/>
+ <path id="squares" transform="matrix(.26458 0 0 .26458 -5.37e-5 0)" d="m4.125 1.6582 0.30469 21.82h18.242l0.001953-21.82h-18.549zm18.555 21.822 0.001953 24.188c7.0591-3.2362 18.032-9.399 18.232-23.754l0.007813-0.43359h-18.242z" style="fill-opacity:.4;stroke-width:.55042"/>
+ <path id="outline" transform="matrix(.26458 0 0 .26458 -5.37e-5 0)" d="m2.6504 0.19922 0.021484 1.4766 0.31055 25.172c0.093479 7.5478 3.1451 12.529 7.0488 15.826 3.9038 3.297 8.5769 5.029 12.025 6.6152l0.65039 0.30274 0.63477-0.33984c3.0702-1.6216 7.7769-3.3403 11.773-6.5996 3.9966-3.2593 7.2344-8.2277 7.2344-15.826v-14.336l-13.221-12.291zm2.9453 2.916h20.381v12.379h13.457v11.332c0 6.8038-2.6491 10.706-6.1562 13.566-3.2982 2.6898-7.3426 4.2502-10.623 5.9141-3.4806-1.5714-7.5236-3.1369-10.74-5.8535-3.4025-2.8737-5.9391-6.8355-6.0234-13.643zm23.289 0.83789 9.2871 8.6328h-9.2871zm-6.5176 14.223a4.9632 4.9632 0 0 0-4.8496 4.9629 4.9632 4.9632 0 0 0 2.8184 4.4746l-1.7324 9.1504h7.7598l-1.7324-9.1523a4.9632 4.9632 0 0 0 2.8145-4.4727 4.9632 4.9632 0 0 0-4.9629-4.9629 4.9632 4.9632 0 0 0-0.11523 0z" style="color-rendering:auto;color:#000000;dominant-baseline:auto;font-feature-settings:normal;font-variant-alternates:normal;font-variant-caps:normal;font-variant-east-asian:normal;font-variant-ligatures:normal;font-variant-numeric:normal;font-variant-position:normal;font-variation-settings:normal;image-rendering:auto;inline-size:0;isolation:auto;mix-blend-mode:normal;shape-margin:0;shape-padding:0;shape-rendering:auto;solid-color:#000000;stop-color:#000000;text-decoration-color:#000000;text-decoration-line:none;text-decoration-style:solid;text-indent:0;text-orientation:mixed;text-transform:none;white-space:normal"/>
 </svg>
 */}).toString().slice(14,-3);
         return svg;
     };
 
     UIElements.prettySize = function (bytes) {
-        var kB = Util.bytesToKilobytes(bytes);
-        if (kB < 1024) { return kB + Messages.KB; }
-        var mB = Util.bytesToMegabytes(bytes);
-        return mB + Messages.MB;
+        var unit = Util.magnitudeOfBytes(bytes);
+        if (unit === 'GB') {
+            return Messages._getKey('formattedGB', [ Util.bytesToGigabytes(bytes)]);
+        } else if (unit === 'MB') {
+            return Messages._getKey('formattedMB', [ Util.bytesToMegabytes(bytes)]);
+        } else {
+            return Messages._getKey('formattedKB', [ Util.bytesToKilobytes(bytes)]);
+        }
     };
 
     UIElements.updateTags = function (common, hrefs) {
@@ -122,7 +127,7 @@ define([
         dcAlert = undefined;
     };
 
-    var importContent = function (type, f, cfg) {
+    var importContent = UIElements.importContent = function (type, f, cfg) {
         return function () {
             var $files = $('<input>', {type:"file"});
             if (cfg && cfg.accept) {
@@ -365,7 +370,7 @@ define([
                 h('div.cp-teams-invite-block', [
                     h('span', Messages.team_inviteLinkSetPassword),
                     h('a.cp-teams-help.fa.fa-question-circle', {
-                        href: origin + 'https://docs.cryptpad.fr/en/user_guide/security.html#passwords-for-documents-and-folders',
+                        href: origin + Pages.localizeDocsLink('https://docs.cryptpad.fr/en/user_guide/security.html#passwords-for-documents-and-folders'),
                         target: "_blank",
                         'data-tippy-placement': "right"
                     })
@@ -570,12 +575,18 @@ define([
                 }
                 else if (callback) {*/
                     // Old import button, used in settings
-                    button
-                    .click(common.prepareFeedback(type))
-                    .click(importContent((data && data.binary) ? 'application/octet-stream' : 'text/plain', callback, {
+                    var importer = importContent((data && data.binary) ? 'application/octet-stream' : 'text/plain', callback, {
                         accept: data ? data.accept : undefined,
                         binary: data ? data.binary : undefined
-                    }));
+                    });
+
+                    var handler = data.first? function () {
+                        data.first(importer);
+                    }: importer; //importContent;
+
+                    button
+                    .click(common.prepareFeedback(type))
+                    .click(handler);
                 //}
                 break;
             case 'upload':
@@ -710,8 +721,14 @@ define([
                                         callback(err);
                                         return void UI.warn(Messages.fm_forbidden);
                                     }
-                                    var cMsg = common.isLoggedIn() ? Messages.movedToTrash : Messages.deleted;
-                                    var msg = common.fixLinks($('<div>').html(cMsg));
+                                    var msg;
+                                    if (common.isLoggedIn()) {
+                                        msg = Pages.setHTML(h('div'), Messages.movedToTrash);
+                                        $(msg).find('a').attr('href', '/drive/');
+                                        common.fixLinks(msg);
+                                    } else {
+                                        msg = h('div', Messages.deleted);
+                                    }
                                     UI.alert(msg);
                                     callback();
                                     return;
@@ -777,6 +794,28 @@ define([
                     h('span.cp-toolbar-name.cp-toolbar-drawer-element', Messages.toolbar_savetodrive)
                 ])).click(common.prepareFeedback(type));
                 break;
+            case 'storeindrive':
+                button = $(h('button.cp-toolbar-storeindrive', {
+                    style: 'display:none;'
+                }, [
+                    h('i.fa.fa-hdd-o'),
+                    h('span.cp-toolbar-name.cp-toolbar-drawer-element', Messages.toolbar_storeInDrive)
+                ])).click(common.prepareFeedback(type)).click(function () {
+                    $(button).hide();
+                    common.getSframeChannel().query("Q_AUTOSTORE_STORE", null, function (err, obj) {
+                        var error = err || (obj && obj.error);
+                        if (error) {
+                            $(button).show();
+                            if (error === 'E_OVER_LIMIT') {
+                                return void UI.warn(Messages.pinLimitReached);
+                            }
+                            return void UI.warn(Messages.autostore_error);
+                        }
+                        $(document).trigger('cpPadStored');
+                        UI.log(Messages.autostore_saved);
+                    });
+                });
+                break;
             case 'hashtag':
                 button = $('<button>', {
                     'class': 'fa fa-hashtag cp-toolbar-icon-hashtag',
@@ -832,12 +871,7 @@ define([
                 .text(Messages.propertiesButton))
                 .click(common.prepareFeedback(type))
                 .click(function () {
-                    common.isPadStored(function (err, data) {
-                        if (!data) {
-                            return void UI.alert(Messages.autostore_notAvailable);
-                        }
-                        sframeChan.event('EV_PROPERTIES_OPEN');
-                    });
+                    sframeChan.event('EV_PROPERTIES_OPEN');
                 });
                 break;
             case 'save': // OnlyOffice save
@@ -902,7 +936,8 @@ define([
         return button;
     };
 
-    var createMdToolbar = function (common, editor) {
+    var createMdToolbar = function (common, editor, cfg) {
+        cfg = cfg || {};
         var $toolbar = $('<div>', {
             'class': 'cp-markdown-toolbar'
         });
@@ -911,18 +946,22 @@ define([
         };
         var actions = {
             'bold': {
+                // Msg.mdToolbar_bold
                 expr: '**{0}**',
                 icon: 'fa-bold'
             },
             'italic': {
+                // Msg.mdToolbar_italic
                 expr: '_{0}_',
                 icon: 'fa-italic'
             },
             'strikethrough': {
+                // Msg.mdToolbar_strikethrough
                 expr: '~~{0}~~',
                 icon: 'fa-strikethrough'
             },
             'heading': {
+                // Msg.mdToolbar_heading
                 apply: function (str) {
                     return '\n'+clean(str).split('\n').map(function (line) {
                         return '# '+line;
@@ -931,10 +970,12 @@ define([
                 icon: 'fa-header'
             },
             'link': {
+                // Msg.mdToolbar_link
                 expr: '[{0}](http://)',
                 icon: 'fa-link'
             },
             'quote': {
+                // Msg.mdToolbar_quote
                 apply: function (str) {
                     return '\n\n'+str.split('\n').map(function (line) {
                         return '> '+line;
@@ -943,6 +984,7 @@ define([
                 icon: 'fa-quote-right'
             },
             'nlist': {
+                // Msg.mdToolbar_nlist
                 apply: function (str) {
                     return '\n'+clean(str).split('\n').map(function (line) {
                         return '1. '+line;
@@ -951,6 +993,7 @@ define([
                 icon: 'fa-list-ol'
             },
             'list': {
+                // Msg.mdToolbar_list
                 apply: function (str) {
                     return '\n'+clean(str).split('\n').map(function (line) {
                         return '* '+line;
@@ -959,6 +1002,7 @@ define([
                 icon: 'fa-list-ul'
             },
             'check': {
+                // Msg.mdToolbar_check
                 apply: function (str) {
                     return '\n' + clean(str).split('\n').map(function (line) {
                         return '* [ ] ' + line;
@@ -967,6 +1011,7 @@ define([
                 icon: 'fa-check-square-o'
             },
             'code': {
+                // Msg.mdToolbar_code
                 apply: function (str) {
                     if (str.indexOf('\n') !== -1) {
                         return '\n```\n' + clean(str) + '\n```\n';
@@ -976,13 +1021,46 @@ define([
                 icon: 'fa-code'
             },
             'toc': {
+                // Msg.mdToolbar_toc
                 expr: '[TOC]',
                 icon: 'fa-newspaper-o'
             }
         };
+
+        if (typeof(cfg.embed) === "function") {
+            actions.embed = { // Messages.mdToolbar_embed
+                icon: 'fa-picture-o',
+                action: function () {
+                    var _cfg = {
+                        types: ['file'],
+                        where: ['root']
+                    };
+                    common.openFilePicker(_cfg, function (data) {
+                        if (data.type !== 'file') {
+                            console.log("Unexpected data type picked " + data.type);
+                            return;
+                        }
+                        if (data.type !== 'file') { console.log('unhandled embed type ' + data.type); return; }
+                        common.setPadAttribute('atime', +new Date(), null, data.href);
+                        var privateDat = common.getMetadataMgr().getPrivateData();
+                        var origin = privateDat.fileHost || privateDat.origin;
+                        var src = data.src = data.src.slice(0,1) === '/' ? origin + data.src : data.src;
+                        cfg.embed(h('media-tag', {
+                            src: src,
+                            'data-crypto-key': 'cryptpad:' + data.key,
+                        }), data);
+                    });
+
+                }
+            };
+        }
+
         var onClick = function () {
             var type = $(this).attr('data-type');
             var texts = editor.getSelections();
+            if (actions[type].action) {
+                return actions[type].action();
+            }
             var newTexts = texts.map(function (str) {
                 str = str || Messages.mdToolbar_defaultText;
                 if (actions[type].apply) {
@@ -1009,7 +1087,7 @@ define([
         }).appendTo($toolbar);
         return $toolbar;
     };
-    UIElements.createMarkdownToolbar = function (common, editor) {
+    UIElements.createMarkdownToolbar = function (common, editor, opts) {
         var readOnly = common.getMetadataMgr().getPrivateData().readOnly;
         if (readOnly) {
             return {
@@ -1019,7 +1097,7 @@ define([
             };
         }
 
-        var $toolbar = createMdToolbar(common, editor);
+        var $toolbar = createMdToolbar(common, editor, opts);
         var cfg = {
             title: Messages.mdToolbar_button,
             element: $toolbar
@@ -1077,36 +1155,45 @@ define([
         return e;
     };
 
-    UIElements.createHelpMenu = function (common, categories) {
+    UIElements.createHelpMenu = function (common /*, categories */) {
         var type = common.getMetadataMgr().getMetadata().type || 'pad';
 
-        var elements = [];
-        if (Messages.help && Messages.help.generic) {
-            Object.keys(Messages.help.generic).forEach(function (el) {
-                elements.push(setHTML(h('li'), Messages.help.generic[el]));
-            });
+
+        var apps = {
+            pad: 'richtext',
+            code: 'code',
+            slide: 'slides',
+            sheet: 'sheets',
+            poll: 'poll',
+            kanban: 'kanban',
+            form: 'form',
+            whiteboard: 'whiteboard',
+        };
+
+        var href = "https://docs.cryptpad.fr/en/user_guide/applications.html";
+        if (apps[type]) {
+            href = "https://docs.cryptpad.fr/en/user_guide/apps/" + apps[type] + ".html";
         }
-        if (categories) {
-            categories.forEach(function (cat) {
-                var msgs = Messages.help[cat];
-                if (msgs) {
-                    Object.keys(msgs).forEach(function (el) {
-                        elements.push(setHTML(h('li'), msgs[el]));
-                    });
-                }
-            });
+        if (type === 'drive') {
+            href = "https://docs.cryptpad.fr/en/user_guide/drive.html";
         }
+        href = Pages.localizeDocsLink(href);
+
+        var content = setHTML(h('p'), Messages.help_genericMore);
+        $(content).find('a').attr({
+            href: href,
+            target: '_blank',
+            rel: 'noopener noreferrer',
+        });
 
         var text = h('p.cp-help-text', [
-            h('h1', Messages.help.title),
-            h('ul', elements)
+            content
         ]);
 
         common.fixLinks(text);
 
         var closeButton = h('span.cp-help-close.fa.fa-times');
         var $toolbarButton = common.createButton('', true, {
-            title: Messages.hide_help_button,
             text: Messages.help_button,
             name: 'help'
         }).addClass('cp-toolbar-button-active');
@@ -1115,28 +1202,12 @@ define([
             text
         ]);
 
-        var toggleHelp = function (forceClose) {
-            if ($(help).hasClass('cp-help-hidden')) {
-                if (forceClose) { return; }
-                common.setAttribute(['hideHelp', type], false);
-                $toolbarButton.addClass('cp-toolbar-button-active');
-                $toolbarButton.attr('title', Messages.hide_help_button);
-                return void $(help).removeClass('cp-help-hidden');
-            }
+        $toolbarButton.attr('title', Messages.show_help_button);
+
+        var toggleHelp = function () {
             $toolbarButton.removeClass('cp-toolbar-button-active');
-            $toolbarButton.attr('title', Messages.show_help_button);
             $(help).addClass('cp-help-hidden');
             common.setAttribute(['hideHelp', type], true);
-        };
-
-        var showMore = function () {
-            $(text).addClass("cp-help-small");
-            var $dot = $('<span>').text('...').appendTo($(text).find('h1'));
-            $(text).click(function () {
-                $(text).removeClass('cp-help-small');
-                $(text).off('click');
-                $dot.remove();
-            });
         };
 
         $(closeButton).click(function (e) {
@@ -1144,16 +1215,12 @@ define([
             toggleHelp(true);
         });
         $toolbarButton.click(function () {
-            toggleHelp();
+            common.openUnsafeURL(href);
         });
 
         common.getAttribute(['hideHelp', type], function (err, val) {
-            //if ($(window).height() < 800 || $(window).width() < 800) { return void toggleHelp(true); }
-            if (val === true) { return void toggleHelp(true); }
-            // Note: Help is always hidden by default now, to avoid displaying to many things in the UI
-            // This is why we have (true || ...)
-            if (!val && (true || $(window).height() < 800 || $(window).width() < 800)) {
-                return void showMore();
+            if (val === true || $(window).height() < 800 || $(window).width() < 800) {
+                toggleHelp(true);
             }
         });
 
@@ -1179,7 +1246,18 @@ define([
         // getPinnedUsage updates common.account.usage, and other values
         // so we can just use those and only check for errors
         var $container = $('<span>', {'class':'cp-limit-container'});
+        var to;
         var todo = function (err, data) {
+            if (to) {
+                clearTimeout(to);
+                to = undefined;
+            }
+            if (err === 'RPC_NOT_READY') {
+                to = setTimeout(function () {
+                    common.getPinUsage(teamId, todo);
+                }, 1000);
+                return;
+            }
             if (err || !data) { return void console.error(err || 'No data'); }
 
             var usage = data.usage;
@@ -1327,7 +1405,7 @@ define([
 
         // Button
         var $button = $('<button>', {
-            'class': ''
+            'class': config.buttonCls || ''
         }).append($('<span>', {'class': 'cp-dropdown-button-title'}).html(config.text || ""));
         if (config.caretDown) {
             $('<span>', {
@@ -1344,13 +1422,20 @@ define([
         var $innerblock = $('<div>', {'class': 'cp-dropdown-content'});
         if (config.left) { $innerblock.addClass('cp-dropdown-left'); }
 
+        var hide = function () {
+            window.setTimeout(function () { $innerblock.hide(); }, 0);
+        };
+
         config.options.forEach(function (o) {
             if (!isValidOption(o)) { return; }
             if (isElement(o)) { return $innerblock.append($(o)); }
             var $el = $('<' + o.tag + '>', o.attributes || {}).html(o.content || '');
             $el.appendTo($innerblock);
             if (typeof(o.action) === 'function') {
-                $el.click(o.action);
+                $el.click(function (e) {
+                    var close = o.action(e);
+                    if (close) { hide(); }
+                });
             }
         });
 
@@ -1368,10 +1453,6 @@ define([
             } else if (scroll > ($innerblock.scrollTop() + 280)) {
                 $innerblock.scrollTop(scroll-270);
             }
-        };
-
-        var hide = function () {
-            window.setTimeout(function () { $innerblock.hide(); }, 0);
         };
 
         var show = function () {
@@ -1425,11 +1506,13 @@ define([
         if (config.isSelect) {
             var pressed = '';
             var to;
+            $container.onChange = Util.mkEvent();
             $container.on('click', 'a', function () {
                 value = $(this).data('value');
                 var $val = $(this);
                 var textValue = $val.html() || value;
                 $button.find('.cp-dropdown-button-title').html(textValue);
+                $container.onChange.fire(textValue, value);
             });
             $container.keydown(function (e) {
                 var $value = $innerblock.find('[data-value].cp-dropdown-element-active:visible');
@@ -1531,7 +1614,7 @@ define([
         var legalLine = template(Messages.info_imprintFlavour, Pages.imprintLink);
         var privacyLine = template(Messages.info_privacyFlavour, Pages.privacyLink);
 
-        var faqLine = template(Messages.help.generic.more, Pages.docsLink);
+        var faqLine = template(Messages.help_genericMore, Pages.docsLink);
 
         var content = h('div.cp-info-menu-container', [
             h('div.logo-block', [
@@ -1546,6 +1629,8 @@ define([
             privacyLine,
             faqLine,
         ]);
+
+        $(content).find('a').attr('target', '_blank');
 
         var buttons = [
             {
@@ -1567,7 +1652,7 @@ define([
         var $displayedName = $('<span>', {'class': displayNameCls});
 
         var priv = metadataMgr.getPrivateData();
-        var accountName = priv.accountName;
+        var accountName = Util.fixHTML(priv.accountName);
         var origin = priv.origin;
         var padType = metadataMgr.getMetadata().type;
 
@@ -1577,7 +1662,8 @@ define([
             var $userAdminContent = $('<p>');
             if (accountName) {
                 var $userAccount = $('<span>').append(Messages.user_accountName + ': ');
-                $userAdminContent.append($userAccount).append(Util.fixHTML(accountName));
+
+                $userAdminContent.append($userAccount).append(accountName);
                 $userAdminContent.append($('<br>'));
             }
             if (config.displayName && !AppConfig.disableProfile) {
@@ -1628,6 +1714,18 @@ define([
                 content: h('span', Messages.type.teams),
                 action: function () {
                     Common.openURL('/teams/');
+                },
+            });
+        }
+        if (padType !== 'calendar' && accountName) {
+            options.push({
+                tag: 'a',
+                attributes: {
+                    'class': 'fa fa-calendar',
+                },
+                content: h('span', Messages.calendar),
+                action: function () {
+                    Common.openURL('/calendar/');
                 },
             });
         }
@@ -1698,21 +1796,7 @@ define([
                 },
             });
         }
-/*
-        if (AppConfig.surveyURL) {
-            options.push({
-                tag: 'a',
-                attributes: {
-                    'class': 'cp-toolbar-survey fa fa-graduation-cap'
-                },
-                content: h('span', Messages.survey),
-                action: function () {
-                    Common.openUnsafeURL(AppConfig.surveyURL);
-                    Feedback.send('SURVEY_CLICKED');
-                },
-            });
-        }
-*/
+
         options.push({
             tag: 'a',
             attributes: {
@@ -1744,7 +1828,14 @@ define([
             });
         }*/
         options.push({ tag: 'hr' });
+
+        // We have code to hide 2 separators in a row, but in the case of survey, they may be
+        // in the DOM but hidden. We need to know if there are other elements in this
+        // section to determine if we have to manually hide a separator.
+        var surveyAlone = true;
+
         if (Config.allowSubscriptions) {
+            surveyAlone = false;
             options.push({
                 tag: 'a',
                 attributes: {
@@ -1757,6 +1848,7 @@ define([
             });
         }
         if (!priv.plan && !Config.removeDonateButton) {
+            surveyAlone = false;
             options.push({
                 tag: 'a',
                 attributes: {
@@ -1768,6 +1860,21 @@ define([
                 },
             });
         }
+
+        // If you set "" in the admin panel, it will remove the AppConfig survey
+        var surveyURL = typeof(Broadcast.surveyURL) !== "undefined" ? Broadcast.surveyURL
+                                        : AppConfig.surveyURL;
+        options.push({
+            tag: 'a',
+            attributes: {
+                'class': 'cp-toolbar-survey fa fa-graduation-cap'
+            },
+            content: h('span', Messages.survey),
+            action: function () {
+                Common.openUnsafeURL(surveyURL);
+                Feedback.send('SURVEY_CLICKED');
+            },
+        });
 
         options.push({ tag: 'hr' });
         // Add login or logout button depending on the current status
@@ -1803,14 +1910,16 @@ define([
                     Common.setLoginRedirect('login');
                 },
             });
-            options.push({
-                tag: 'a',
-                attributes: {'class': 'cp-toolbar-menu-register fa fa-user-plus'},
-                content: h('span', Messages.login_register),
-                action: function () {
-                    Common.setLoginRedirect('register');
-                },
-            });
+            if (!Config.restrictRegistration) {
+                options.push({
+                    tag: 'a',
+                    attributes: {'class': 'cp-toolbar-menu-register fa fa-user-plus'},
+                    content: h('span', Messages.login_register),
+                    action: function () {
+                        Common.setLoginRedirect('register');
+                    },
+                });
+            }
         }
         var $icon = $('<span>', {'class': 'fa fa-user-secret'});
         //var $userbig = $('<span>', {'class': 'big'}).append($displayedName.clone());
@@ -1834,6 +1943,29 @@ define([
         };
         var $userAdmin = UIElements.createDropdown(dropdownConfigUser);
 
+        var $survey = $userAdmin.find('.cp-toolbar-survey');
+        if (!surveyURL) {
+            $survey.hide();
+            if (surveyAlone) { $survey.next('hr').hide(); }
+        }
+        Common.makeUniversal('broadcast', {
+            onEvent: function (obj) {
+                var cmd = obj.ev;
+                if (cmd !== "SURVEY") { return; }
+                var url = obj.data;
+                if (url === surveyURL) { return; }
+                if (url && !Util.isValidURL(url)) { return; }
+                surveyURL = url;
+                if (!url) {
+                    $survey.hide();
+                    if (surveyAlone) { $survey.next('hr').hide(); }
+                    return;
+                }
+                $survey.show();
+                if (surveyAlone) { $survey.next('hr').show(); }
+            }
+        });
+
         /*
         // Uncomment these lines to have a language selector in the admin menu
         // FIXME clicking on the inner menu hides the outer one
@@ -1849,6 +1981,13 @@ define([
         var oldUrl = '';
         var updateButton = function () {
             var myData = metadataMgr.getUserData();
+            var privateData = metadataMgr.getPrivateData();
+            if (!priv.plan && privateData.plan) {
+                config.$initBlock.empty();
+                metadataMgr.off('change', updateButton);
+                UIElements.createUserAdminMenu(Common, config);
+                return;
+            }
             if (!myData) { return; }
             if (loadingAvatar) {
                 // Try again in 200ms
@@ -1928,7 +2067,8 @@ define([
             $body: $('body')
         });
         var $modal = modal.$modal;
-        var $title = $('<h3>').text(Messages.fm_newFile);
+        var $title = $(h('h3', [ h('i.fa.fa-plus'), ' ', Messages.fm_newButton ]));
+
         var $description = $('<p>').html(Messages.creation_newPadModalDescription);
         $modal.find('.cp-modal').append($title);
         $modal.find('.cp-modal').append($description);
@@ -1942,6 +2082,8 @@ define([
             if (p === 'todo') { return; }
             if (p === 'file') { return; }
             if (p === 'accounts') { return; }
+            if (p === 'calendar') { return; }
+            if (p === 'poll') { return; } // Replaced by forms
             if (!common.isLoggedIn() && AppConfig.registeredOnlyTypes &&
                 AppConfig.registeredOnlyTypes.indexOf(p) !== -1) { return; }
             return true;
@@ -2087,6 +2229,18 @@ define([
         var sframeChan = common.getSframeChannel();
         var metadataMgr = common.getMetadataMgr();
         var privateData = metadataMgr.getPrivateData();
+
+        if (privateData.offline) {
+            var onChange = function () {
+                var privateData = metadataMgr.getPrivateData();
+                if (privateData.offline) { return; }
+                UIElements.getPadCreationScreen(common, cfg, appCfg, cb);
+                metadataMgr.off('change', onChange);
+            };
+            metadataMgr.onChange(onChange);
+            return;
+        }
+
         var type = metadataMgr.getMetadataLazy().type || privateData.app;
         var fromFileData = privateData.fromFileData;
 
@@ -2108,13 +2262,13 @@ define([
 
         // Title
         //$creation.append(h('h2.cp-creation-title', Messages.newButtonTitle));
-        var newPadH3Title = Messages['button_new' + type];
+        var newPadH3Title = Messages['button_new' + type]; // Messages.button_newform
 
         var title = h('div.cp-creation-title', [
             UI.getFileIcon({type: type})[0],
             h('div.cp-creation-title-text', [
                 h('span', newPadH3Title),
-                createHelper('https://docs.cryptpad.fr/en/user_guide/apps/general.html#new-document', Messages.creation_helperText)
+                createHelper(Pages.localizeDocsLink('https://docs.cryptpad.fr/en/user_guide/apps/general.html#new-document'), Messages.creation_helperText)
             ])
         ]);
         $creation.append(title);
@@ -2130,6 +2284,7 @@ define([
 
         // Team pad
         var team;
+        // FIXME: broken wen cache is enabled
         var teamExists = privateData.teams && Object.keys(privateData.teams).length;
         var teamValue;
         // storeInTeam can be
@@ -2209,7 +2364,7 @@ define([
 
         // Password
         var password = h('div.cp-creation-password', [
-            UI.createCheckbox('cp-creation-password', Messages.creation_password, false),
+            UI.createCheckbox('cp-creation-password', Messages.properties_addPassword, false),
             h('span.cp-creation-password-picker.cp-creation-slider', [
                 UI.passwordInput({id: 'cp-creation-password-val'})
                 /*h('input#cp-creation-password-val', {
@@ -2297,6 +2452,7 @@ define([
                         'title': name,
                     }).appendTo($container);
                     $span.data('id', obj.id);
+                    if (obj.content) { $span.data('content', obj.content); }
                     if (idx === selected) { $span.addClass('cp-creation-template-selected'); }
                     if (!obj.thumbnail) {
                         $span.append(obj.icon || h('span.cptools.cptools-template'));
@@ -2452,6 +2608,7 @@ define([
 
             var $template = $creation.find('.cp-creation-template-selected');
             var templateId = $template.data('id') || undefined;
+            var templateContent = $template.data('content') || undefined;
             // Team
             var team;
             if (teamValue) {
@@ -2464,6 +2621,7 @@ define([
                 password: passwordVal,
                 expire: expireVal,
                 templateId: templateId,
+                templateContent: templateContent,
                 team: team
             };
         };
@@ -2509,9 +2667,22 @@ define([
         $creation.focus();
     };
 
+    UIElements.loginErrorScreenContent = function (common) {
+        var msg = Pages.setHTML(h('span'), Messages.restrictedLoginPrompt);
+        $(msg).find('a').attr({
+            href: '/login/',
+        }).click(function (ev) {
+            ev.preventDefault();
+            common.setLoginRedirect('login');
+        });
+        return msg;
+    };
+
+    var autoStoreModal = {};
     UIElements.onServerError = function (common, err, toolbar, cb) {
         //if (["EDELETED", "EEXPIRED", "ERESTRICTED"].indexOf(err.type) === -1) { return; }
         var priv = common.getMetadataMgr().getPrivateData();
+        var sframeChan = common.getSframeChannel();
         var msg = err.type;
         if (err.type === 'EEXPIRED') {
             msg = Messages.expiredError;
@@ -2521,19 +2692,48 @@ define([
             if (toolbar && typeof toolbar.deleted === "function") { toolbar.deleted(); }
         } else if (err.type === 'EDELETED') {
             if (priv.burnAfterReading) { return void cb(); }
+
+            if (autoStoreModal[priv.channel]) {
+                autoStoreModal[priv.channel].delete();
+                delete autoStoreModal[priv.channel];
+            }
+
+            if (err.ownDeletion) {
+                if (toolbar && typeof toolbar.deleted === "function") { toolbar.deleted(); }
+                (cb || function () {})();
+                return;
+            }
+
+            // View users have the wrong seed, thay can't retireve access directly
+            // Version 1 hashes don't support passwords
+            if (!priv.readOnly && !priv.oldVersionHash) {
+                sframeChan.event('EV_SHARE_OPEN', {hidden: true}); // Close share modal
+                UIElements.displayPasswordPrompt(common, {
+                    fromServerError: true,
+                    loaded: err.loaded,
+                });
+                if (toolbar && typeof toolbar.deleted === "function") { toolbar.deleted(); }
+                (cb || function () {})();
+                return;
+            }
+
             msg = Messages.deletedError;
             if (err.loaded) {
                 msg += Messages.errorCopy;
             }
+
             if (toolbar && typeof toolbar.deleted === "function") { toolbar.deleted(); }
         } else if (err.type === 'ERESTRICTED') {
             msg = Messages.restrictedError;
+            if (!common.isLoggedIn()) {
+                msg = UIElements.loginErrorScreenContent(common);
+            }
+
             if (toolbar && typeof toolbar.failed === "function") { toolbar.failed(true); }
         } else if (err.type === 'HASH_NOT_FOUND' && priv.isHistoryVersion) {
             msg = Messages.oo_deletedVersion;
             if (toolbar && typeof toolbar.failed === "function") { toolbar.failed(true); }
         }
-        var sframeChan = common.getSframeChannel();
         sframeChan.event('EV_SHARE_OPEN', {hidden: true});
         UI.errorLoadingScreen(msg, Boolean(err.loaded), Boolean(err.loaded));
         (cb || function () {})();
@@ -2542,10 +2742,13 @@ define([
     UIElements.displayPasswordPrompt = function (common, cfg, isError) {
         var error;
         if (isError) { error = setHTML(h('p.cp-password-error'), Messages.password_error); }
+
         var info = h('p.cp-password-info', Messages.password_info);
+        var info_loaded = setHTML(h('p.cp-password-info'), Messages.errorCopy);
+
         var password = UI.passwordInput({placeholder: Messages.password_placeholder});
         var $password = $(password);
-        var button = h('button', Messages.password_submit);
+        var button = h('button.btn.btn-primary', Messages.password_submit);
         cfg = cfg || {};
 
         if (cfg.value && !isError) {
@@ -2554,6 +2757,21 @@ define([
 
         var submit = function () {
             var value = $password.find('.cp-password-input').val();
+
+            // Password-prompt called from UIElements.onServerError
+            if (cfg.fromServerError) {
+                common.getSframeChannel().query('Q_PASSWORD_CHECK', value, function (err, obj) {
+                    if (obj && obj.error) {
+                        console.error(obj.error);
+                        return void UI.warn(Messages.error);
+                    }
+                    // On success, outer will reload the page: this is a wrong password
+                    UIElements.displayPasswordPrompt(common, cfg, true);
+                });
+                return;
+            }
+
+            // Initial load
             UI.addLoadingScreen({newProgress: true});
             if (window.CryptPad_updateLoadingProgress) {
                 window.CryptPad_updateLoadingProgress({
@@ -2567,6 +2785,8 @@ define([
                 }
             });
         };
+
+
         $password.find('.cp-password-input').on('keydown', function (e) { if (e.which === 13) { submit(); } });
         $(button).on('click', function () { submit(); });
 
@@ -2574,19 +2794,20 @@ define([
         var block = h('div#cp-loading-password-prompt', [
             error,
             info,
+            cfg.loaded ? info_loaded : undefined,
             h('p.cp-password-form', [
                 password,
                 button
-            ])
+            ]),
         ]);
-        UI.errorLoadingScreen(block);
+        UI.errorLoadingScreen(block, Boolean(cfg.loaded), Boolean(cfg.loaded));
 
         $password.find('.cp-password-input').focus();
     };
 
     UIElements.displayBurnAfterReadingPage = function (common, cb) {
         var info = h('p.cp-password-info', Messages.burnAfterReading_warningAccess);
-        var button = h('button.primary', Messages.burnAfterReading_proceed);
+        var button = h('button.btn.primary', Messages.burnAfterReading_proceed);
 
         $(button).on('click', function () {
             cb();
@@ -2639,13 +2860,6 @@ define([
                 common.openURL(priv.accounts.donateURL);
                 Feedback.send('CROWDFUNDING_YES');
             });
-            $(modal.popup).find('a').click(function (e) {
-                e.stopPropagation();
-                e.preventDefault();
-                modal.delete();
-                common.openURL(priv.accounts.donateURL);
-                Feedback.send('CROWDFUNDING_LINK');
-            });
             $(no).click(function () {
                 modal.delete();
                 Feedback.send('CROWDFUNDING_NO');
@@ -2672,31 +2886,44 @@ define([
     };
 
     var storePopupState = false;
-    var autoStoreModal = {};
     UIElements.displayStorePadPopup = function (common, data) {
         if (storePopupState) { return; }
         storePopupState = true;
-        if (data && data.stored) { return; } // We won't display the popup for dropped files
+        // We won't display the popup for dropped files or already stored pads
+        if (data && data.stored) {
+            if (!data.inMyDrive) {
+                $('.cp-toolbar-storeindrive').show();
+            }
+            return;
+        }
         var priv = common.getMetadataMgr().getPrivateData();
 
         // This pad will be deleted automatically, it shouldn't be stored
         if (priv.burnAfterReading) { return; }
 
+
         var typeMsg = priv.pathname.indexOf('/file/') !== -1 ? Messages.autostore_file :
                         priv.pathname.indexOf('/drive/') !== -1 ? Messages.autostore_sf :
                           Messages.autostore_pad;
         var text = Messages._getKey('autostore_notstored', [typeMsg]);
-        var footer = Messages.autostore_settings;
+        var footer = Pages.setHTML(h('span'), Messages.autostore_settings);
 
         var hide = h('button.cp-corner-cancel', Messages.autostore_hide);
         var store = h('button.cp-corner-primary', Messages.autostore_store);
         var actions = h('div', [hide, store]);
 
         var initialHide = data && data.autoStore && data.autoStore === -1;
+        if (initialHide) {
+            $('.cp-toolbar-storeindrive').show();
+            UIElements.displayCrowdfunding(common);
+            return;
+        }
+
         var modal = UI.cornerPopup(text, actions, footer, {hidden: initialHide});
 
         // Once the store pad popup is created, put the crowdfunding one in the queue
         UIElements.displayCrowdfunding(common);
+
 
         autoStoreModal[priv.channel] = modal;
 
@@ -2707,6 +2934,7 @@ define([
 
         $(hide).click(function () {
             delete autoStoreModal[priv.channel];
+            $('.cp-toolbar-storeindrive').show();
             modal.delete();
         });
         var waitingForStoringCb = false;
@@ -2823,7 +3051,7 @@ define([
 
         var dismiss = function () {
             common.mailbox.dismiss(data, function (err) {
-                console.log(err);
+                if (err) { console.log(err); }
             });
         };
         var answer = function (yes) {
@@ -2832,6 +3060,7 @@ define([
                 href: msg.content.href,
                 password: msg.content.password,
                 title: msg.content.title,
+                calendar: msg.content.calendar,
                 answer: yes
             }, {
                 channel: msg.content.user.notifications,
@@ -2845,6 +3074,7 @@ define([
                 // ACCEPT
                 sframeChan.query('Q_SET_PAD_METADATA', {
                     channel: msg.content.channel,
+                    channels: msg.content.channels,
                     command: 'ADD_OWNERS',
                     value: [priv.edPublic]
                 }, function (err, res) {
@@ -2867,20 +3097,34 @@ define([
                     // Add the pad to your drive
                     // This command will also add your mailbox to the metadata log
                     // The callback is called when the pad is stored, independantly of the metadata command
-                    sframeChan.query('Q_ACCEPT_OWNERSHIP', data, function (err, res) {
-                        if (err || (res && res.error)) {
-                            return void console.error(err | res.error);
-                        }
-                        UI.log(Messages.saved);
-                        if (autoStoreModal[data.channel]) {
-                            autoStoreModal[data.channel].delete();
-                            delete autoStoreModal[data.channel];
-                        }
-                    });
+                    if (data.calendar) {
+                        var calendarModule = common.makeUniversal('calendar');
+                        var calendarData = data.calendar;
+                        calendarData.href = data.href;
+                        calendarData.teamId = 1;
+                        calendarModule.execCommand('ADD', calendarData, function (obj) {
+                            if (obj && obj.error) {
+                                console.error(obj.error);
+                                return void UI.warn(Messages.error);
+                            }
+                        });
+                    } else {
+                        sframeChan.query('Q_ACCEPT_OWNERSHIP', data, function (err, res) {
+                            if (err || (res && res.error)) {
+                                return void console.error(err | res.error);
+                            }
+                            UI.log(Messages.saved);
+                            if (autoStoreModal[data.channel]) {
+                                autoStoreModal[data.channel].delete();
+                                delete autoStoreModal[data.channel];
+                            }
+                        });
+                    }
 
                     // Remove yourself from the pending owners
                     sframeChan.query('Q_SET_PAD_METADATA', {
                         channel: msg.content.channel,
+                        channels: msg.content.channels,
                         command: 'RM_PENDING_OWNERS',
                         value: [priv.edPublic]
                     }, function (err, res) {
@@ -2897,6 +3141,7 @@ define([
             // Remove yourself from the pending owners
             sframeChan.query('Q_SET_PAD_METADATA', {
                 channel: msg.content.channel,
+                channels: msg.content.channels,
                 command: 'RM_PENDING_OWNERS',
                 value: [priv.edPublic]
             }, function (err, res) {

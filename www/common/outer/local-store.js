@@ -73,7 +73,17 @@ define([
     };
 
     LocalStore.isLoggedIn = function () {
-        return typeof getUserHash() === "string";
+        return window.CP_logged_in || typeof getUserHash() === "string";
+    };
+
+    LocalStore.getDriveRedirectPreference = function () {
+        try {
+            return JSON.parse(localStorage[Constants.redirectToDriveKey]);
+        } catch (err) { return; }
+    };
+
+    LocalStore.setDriveRedirectPreference = function (bool) {
+        localStorage.setItem(Constants.redirectToDriveKey, Boolean(bool));
     };
 
     LocalStore.login = function (hash, name, cb) {
@@ -100,7 +110,7 @@ define([
         try {
             Object.keys(localStorage || {}).forEach(function (k) {
                 // Remvoe everything in localStorage except CACHE and FS_hash
-                if (/^CRYPTPAD_CACHE/.test(k) || /^LESS_CACHE/.test(k) || k === Constants.fileHashKey) { return; }
+                if (/^CRYPTPAD_CACHE/.test(k) || /^LESS_CACHE/.test(k) || k === Constants.fileHashKey || /^CRYPTPAD_STORE|colortheme/.test(k)) { return; }
                 delete localStorage[k];
             });
         } catch (e) { console.error(e); }

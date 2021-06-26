@@ -213,10 +213,6 @@ define([
                     evStart.reg(function () { toolbar.forgotten(); });
                     break;
                 }
-                case STATE.FORBIDDEN: {
-                    evStart.reg(function () { toolbar.deleted(); });
-                    break;
-                }
                 case STATE.DELETED: {
                     evStart.reg(function () { toolbar.deleted(); });
                     break;
@@ -576,15 +572,19 @@ define([
                 if (!readOnly) { onLocal(); }
                 evOnReady.fire(newPad);
 
-                common.openPadChat(onLocal);
+                // In forms, only editors can see the chat
+                if (!readOnly || type !== 'form') { common.openPadChat(onLocal); }
+
                 if (!readOnly && cursorGetter) {
                     common.openCursorChannel(onLocal);
-                    cursor = common.createCursor();
+                    cursor = common.createCursor(onLocal);
                     cursor.onCursorUpdate(function (data) {
                         var newContentStr = cpNfInner.chainpad.getUserDoc();
                         var hjson = normalize(JSON.parse(newContentStr));
                         evCursorUpdate.fire(data, hjson);
                     });
+                } else {
+                    common.getMetadataMgr().setDegraded(false);
                 }
 
                 UI.removeLoadingScreen(emitResize);
@@ -698,6 +698,9 @@ define([
             if (readOnly) { return; }
             toolbar.$drawer.append(
                 common.createButton('import', true, options, function (c, f) {
+                    if (state !== STATE.READY || unsyncMode) {
+                        return void UI.warn(Messages.disconnected);
+                    }
                     if (async) {
                         fi(c, f, function (content) {
                             nThen(function (waitFor) {
@@ -709,7 +712,11 @@ define([
                         return;
                     }
                     nThen(function (waitFor) {
-                        contentUpdate(fi(c, f), waitFor);
+                        var content = fi(c, f);
+                        if (typeof(content) === "undefined") {
+                            return void UI.warn(Messages.importError);
+                        }
+                        contentUpdate(content, waitFor);
                     }).nThen(function () {
                         onLocal();
                     });
@@ -907,6 +914,9 @@ define([
             var $copy = common.createButton('copy', true);
             toolbar.$drawer.append($copy);
 
+            var $store = common.createButton('storeindrive', true);
+            toolbar.$drawer.append($store);
+
             if (!cpNfInner.metadataMgr.getPrivateData().isTemplate) {
                 var templateObj = {
                     rt: cpNfInner.chainpad,
@@ -917,7 +927,9 @@ define([
             }
 
             var $importTemplateButton = common.createButton('importtemplate', true);
-            toolbar.$drawer.append($importTemplateButton);
+            if (!readOnly) {
+                toolbar.$drawer.append($importTemplateButton);
+            }
 
             /* add a forget button */
             toolbar.$drawer.append(common.createButton('forget', true, {}, function (err) {

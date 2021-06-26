@@ -53,12 +53,15 @@ define([
         var $type = $('.cp-whiteboard-type');
         var $brush = $('.cp-whiteboard-type .brush');
         var $move = $('.cp-whiteboard-type .move');
+        var $undo = $('.cp-whiteboard-history .undo');
+        var $redo = $('.cp-whiteboard-history .redo');
+        var $text = $('.cp-whiteboard-text button');
         var $deleteButton = $('#cp-app-whiteboard-delete');
 
         var metadataMgr = framework._.cpNfInner.metadataMgr;
 
         var brush = {
-            color: '#000000',
+            color: window.CryptPad_theme === "dark" ? '#FFFFFF' : '#000000',
             opacity: 1
         };
 
@@ -88,7 +91,7 @@ define([
             ctx.moveTo(size/2, size); ctx.lineTo(size/2, size-10);
             ctx.moveTo(0, size/2); ctx.lineTo(10, size/2);
             ctx.moveTo(size, size/2); ctx.lineTo(size-10, size/2);
-            ctx.strokeStyle = '#000000';
+            ctx.strokeStyle = window.CryptPad_theme === 'dark' ? '#FFFFFF' : '#000000';
             ctx.stroke();
 
             var img = ccanvas.toDataURL("image/png");
@@ -137,6 +140,35 @@ define([
             $deleteButton.prop('disabled', '');
         });
 
+        $text.click(function () {
+            $move.click();
+            canvas.add(new Fabric.Textbox('My Text', {
+                fill: brush.color,
+                top: 5,
+                left: 5
+            }));
+        });
+        $undo.click(function () {
+            if (typeof(APP.canvas.undo) !== "function") { return; }
+            APP.canvas.undo();
+            APP.onLocal();
+        });
+        $redo.click(function () {
+            if (typeof(APP.canvas.undo) !== "function") { return; }
+            APP.canvas.redo();
+            APP.onLocal();
+        });
+        $('body').on('keydown', function (e) {
+            if (e.which === 90 && e.ctrlKey) {
+                $undo.click();
+                return;
+            }
+            if (e.which === 89 && e.ctrlKey) {
+                $redo.click();
+                return;
+            }
+        });
+
         var deleteSelection = function () {
             if (APP.draw) { return; }
             if (canvas.getActiveObject()) {
@@ -175,6 +207,16 @@ define([
             c = Colors.rgb2hex(c);
             brush.color = c;
             canvas.freeDrawingBrush.color = Colors.hex2rgba(brush.color, brush.opacity);
+            if (!APP.draw) {
+                var active = canvas.getActiveObject();
+                if (active) {
+                    var col = Colors.hex2rgba(brush.color, brush.opacity);
+                    if (active.text) { active.set('fill', col); }
+                    else { active.set('stroke', col); }
+                    canvas.renderAll();
+                    APP.onLocal();
+                }
+            }
             createCursor();
         };
 
@@ -331,8 +373,9 @@ define([
                 APP.FM.handleFile(blob);
             });
         };
-        var MAX_IMAGE_SIZE = 1 * 1024 * 1024; // 1 MB
-        var maxSizeStr = Util.bytesToMegabytes(MAX_IMAGE_SIZE);
+        var ONE_MB = 1 * 1024 * 1024; // 1 MB
+        var MAX_IMAGE_SIZE = Math.ceil(ONE_MB / 3) * 4 + 23; // 23 is the length of "data:image/jpeg;base64,"
+        var maxSizeStr = Util.bytesToMegabytes(ONE_MB);
         var addImageToCanvas = function (img) {
             if (img.src && img.src.length > MAX_IMAGE_SIZE) {
                 UI.warn(Messages._getKey('upload_tooLargeBrief', [maxSizeStr]));
@@ -436,7 +479,15 @@ define([
             };
         });
 
+        var cleanHistory = function () {
+            if (Array.isArray(canvas.historyUndo)) {
+                canvas.historyUndo = canvas.historyUndo.slice(-100);
+                canvas.historyRedo = canvas.historyRedo.slice(-100);
+            }
+        };
+
         framework.onContentUpdate(function (newContent, waitFor) {
+            cleanHistory();
             var content = newContent.content;
             canvas.loadFromJSON(content, waitFor(function () {
                 canvas.renderAll();
@@ -445,6 +496,7 @@ define([
         });
 
         framework.setContentGetter(function () {
+            cleanHistory();
             var content = canvas.toDatalessJSON();
             return {
                 content: content
@@ -474,7 +526,6 @@ define([
         framework.start();
     };
 
-
     var initialContent = function () {
         return [
             h('div#cp-toolbar.cp-toolbar-container'),
@@ -493,6 +544,13 @@ define([
                 h('div.cp-whiteboard-type', [
                     h('button.btn.brush.fa.fa-paint-brush.btn-primary', {title: Messages.canvas_brush}),
                     h('button.btn.move.fa.fa-arrows', {title: Messages.canvas_select}),
+                ]),
+                h('div.cp-whiteboard-history', [
+                    h('button.btn.undo.fa.fa-undo', {title: Messages.undo}),
+                    h('button.btn.redo.fa.fa-repeat', {title: Messages.redo}),
+                ]),
+                h('div.cp-whiteboard-text', [
+                    h('button.btn.fa.fa-font')
                 ]),
                 h('button.btn.fa.fa-trash#cp-app-whiteboard-delete', {
                     disabled: 'disabled',
@@ -560,6 +618,7 @@ define([
                 $('body').append($div.html());
             }));
         }).nThen(function (waitFor) {
+            require(['/lib/fabric-history.min.js'], waitFor());
 
             // Framework initialization
             Framework.create({

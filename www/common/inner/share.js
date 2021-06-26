@@ -10,8 +10,9 @@ define([
     '/common/clipboard.js',
     '/customize/messages.js',
     '/bower_components/nthen/index.js',
+    '/customize/pages.js',
 ], function ($, Util, Hash, UI, UIElements, Feedback, Modal, h, Clipboard,
-             Messages, nThen) {
+             Messages, nThen, Pages) {
     var Share = {};
 
     var createShareWithFriends = function (config, onShare, linkGetter) {
@@ -111,6 +112,7 @@ define([
                                     password: config.password,
                                     isTemplate: config.isTemplate,
                                     name: myName,
+                                    isCalendar: Boolean(config.calendar),
                                     title: title
                                 }, {
                                     viewed: team && team.id,
@@ -122,6 +124,19 @@ define([
                         }
                         // If it's a team with edit right, add the pad directly
                         if (!team) { return; }
+                        if (config.calendar) {
+                            var calendarModule = common.makeUniversal('calendar');
+                            var calendarData = config.calendar;
+                            calendarData.href = href;
+                            calendarData.teamId = team.id;
+                            calendarModule.execCommand('ADD', calendarData, function (obj) {
+                                if (obj && obj.error) {
+                                    console.error(obj.error);
+                                    return void UI.warn(Messages.error);
+                                }
+                            });
+                            return;
+                        }
                         sframeChan.query('Q_STORE_IN_TEAM', {
                             href: href,
                             password: config.password,
@@ -252,7 +267,7 @@ define([
             h('a', {href: '#'}, Messages.passwordFaqLink)
         ]);
         $(link).click(function () {
-            opts.common.openUnsafeURL("https://docs.cryptpad.fr/en/user_guide/security.html#passwords-for-documents-and-folders");
+            opts.common.openUnsafeURL(Pages.localizeDocsLink("https://docs.cryptpad.fr/en/user_guide/security.html#passwords-for-documents-and-folders"));
         });
         return link;
     };
@@ -479,7 +494,20 @@ define([
         var parsed = Hash.parsePadUrl(pathname);
         var canPresent = ['code', 'slide'].indexOf(parsed.type) !== -1;
         var versionHash = hashes.viewHash && opts.versionHash;
-        var canBAR = parsed.type !== 'drive' && !versionHash;
+        var isForm = parsed.type === "form"; // && opts.auditorHash;
+        var canBAR = parsed.type !== 'drive' && !versionHash && !isForm;
+
+        var labelEdit = Messages.share_linkEdit;
+        var labelView = Messages.share_linkView;
+
+        var auditor;
+        if (isForm) {
+            labelEdit = Messages.share_formEdit;
+            labelView = Messages.share_formView;
+            auditor = UI.createRadio('accessRights', 'cp-share-form', Messages.share_formAuditor, false, {
+                mark: {tabindex:1},
+            });
+        }
 
         var burnAfterReading = (hashes.viewHash && canBAR) ?
                     UI.createRadio('accessRights', 'cp-share-bar', Messages.burnAfterReading_linkBurnAfterReading, false, {
@@ -490,12 +518,13 @@ define([
             h('label', Messages.share_linkAccess),
             h('div.radio-group',[
             UI.createRadio('accessRights', 'cp-share-editable-false',
-                           Messages.share_linkView, true, { mark: {tabindex:1} }),
+                            labelView, true, { mark: {tabindex:1} }),
             canPresent ? UI.createRadio('accessRights', 'cp-share-present',
                             Messages.share_linkPresent, false, { mark: {tabindex:1} }) : undefined,
             UI.createRadio('accessRights', 'cp-share-editable-true',
-                           Messages.share_linkEdit, false, { mark: {tabindex:1} })]),
-            burnAfterReading
+                            labelEdit, false, { mark: {tabindex:1} }),
+            auditor]),
+            burnAfterReading,
         ]);
 
         // Burn after reading
@@ -538,6 +567,7 @@ define([
             var embed = val.embed;
             var present = val.present !== undefined ? val.present : Util.isChecked($rights.find('#cp-share-present'));
             var burnAfterReading = Util.isChecked($rights.find('#cp-share-bar'));
+            var formAuditor = Util.isChecked($rights.find('#cp-share-form'));
             if (versionHash) {
                 edit = false;
                 present = false;
@@ -554,6 +584,9 @@ define([
             }
             var hash = (!hashes.viewHash || (edit && hashes.editHash)) ? hashes.editHash
                                                                        : hashes.viewHash;
+            if (formAuditor && opts.auditorHash) {
+                hash = opts.auditorHash;
+            }
             var href = burnAfterReading ? opts.burnAfterReadingUrl
                                              : (origin + pathname + '#' + hash);
             var parsed = Hash.parsePadUrl(href);
@@ -578,6 +611,9 @@ define([
             $rights.find('#cp-share-editable-false').removeAttr('checked').attr('disabled', true);
             $rights.find('#cp-share-present').removeAttr('checked').attr('disabled', true);
             $rights.find('#cp-share-editable-true').attr('checked', true);
+        }
+        if (isForm && !opts.auditorHash) {
+            $rights.find('#cp-share-form').removeAttr('checked').attr('disabled', true);
         }
 
         var getLink = function () {

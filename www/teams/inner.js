@@ -61,7 +61,7 @@ define([
         if (!drive || !drive.sharedFolders) {
             return void cb();
         }
-        var r = drive.restrictedFolders = drive.restrictedFolders || {};
+        var r = drive.restrictedFolders = {};
         var oldIds = Object.keys(folders);
         nThen(function (waitFor) {
             Object.keys(drive.sharedFolders).forEach(function (fId) {
@@ -76,7 +76,7 @@ define([
                         r[fId] = drive.sharedFolders[fId];
                         if (!r[fId].title) { r[fId].title = r[fId].lastTitle; }
                     }
-                    if (newObj && (newObj.deprecated || newObj.restricted)) {
+                    if (newObj && (newObj.deprecated /*|| newObj.restricted*/)) {
                         delete folders[fId];
                         delete drive.sharedFolders[fId];
                         if (manager && manager.folders) {
@@ -132,6 +132,9 @@ define([
                 APP.teamEdPublic = null;
                 APP.drive = null;
                 APP.cryptor = null;
+                APP.toolbar.$bottomR.empty();
+                APP.toolbar.$bottomM.empty();
+                APP.toolbar.$bottomL.empty();
                 APP.buildUI(common);
                 if (APP.usageBar) {
                     APP.usageBar.stop();
@@ -145,35 +148,38 @@ define([
     };
 
     var mainCategories = {
-        'list': [
+        'list': [ // Msg.team_cat_list
             'cp-team-list',
         ],
         'create': [
             'cp-team-create',
         ],
-        'general': [
+        'general': [ // Msg.team_cat_general
             'cp-team-info',
         ],
-        'link': [
+        'link': [ // Msg.team_cat_link
             'cp-team-link',
         ],
     };
     var teamCategories = {
-        'back': {
+        'back': { // Msg.team_cat_back
             onClick: function (common) {
                 closeTeam(common);
             }
         },
-        'drive': [
+        'drive': [ // Msg.team_cat_drive
             'cp-team-drive'
         ],
-        'members': [
+        'members': [ // Msg.team_cat_members
+            'cp-team-offline',
             'cp-team-roster'
         ],
-        'chat': [
+        'chat': [ // Msg.team_cat_chat
+            'cp-team-offline',
             'cp-team-chat'
         ],
-        'admin': [
+        'admin': [ // Msg.team_cat_admin
+            'cp-team-offline',
             'cp-team-edpublic',
             'cp-team-name',
             'cp-team-avatar',
@@ -192,7 +198,7 @@ define([
     var showCategories = function (cat) {
         hideCategories();
         cat.forEach(function (c) {
-            APP.$rightside.find('.'+c).show();
+            APP.$rightside.find('.'+c).css('display', '');
         });
     };
     var createLeftSide = APP.createLeftSide = function (common, team, teamAdmin) {
@@ -282,10 +288,12 @@ define([
     var buildUI = APP.buildUI = function (common, team, teamAdmin) {
         var $rightside = APP.$rightside;
         $rightside.empty();
+        var added = [];
         var addItem = function (cssClass) {
             var item = cssClass.slice(8);
-            if (typeof (create[item]) === "function") {
+            if (typeof (create[item]) === "function" && added.indexOf(item) < 0) {
                 $rightside.append(create[item](common));
+                added.push(item);
             }
         };
         var categories = team ? teamCategories : mainCategories;
@@ -390,6 +398,14 @@ define([
             var t = Messages._getKey('team_title', [Util.fixHTML(team.metadata.name)]);
             sframeChan.query('Q_SET_TEAM', id, function (err) {
                 if (err) { return void console.error(err); }
+                // Set editable
+                var metadataMgr = common.getMetadataMgr();
+                var privateData = metadataMgr.getPrivateData();
+                if (team.offline) {
+                    APP.$body.addClass('cp-app-team-offline');
+                } else if (!privateData.offline) {
+                    APP.$body.removeClass('cp-app-team-offline');
+                }
                 // Change title
                 $('.cp-toolbar-title-value').text(t);
                 sframeChan.event('EV_SET_TAB_TITLE', t);
@@ -403,6 +419,12 @@ define([
             });
         });
     };
+    var canCreateTeams = function (teams) {
+        var owned = Object.keys(teams || {}).filter(function (id) {
+            return teams[id].owner;
+        }).length;
+        return Constants.MAX_TEAMS_OWNED - owned;
+    };
     var refreshList = function (common, cb) {
         var content = [];
         APP.module.execCommand('LIST_TEAMS', null, function (obj) {
@@ -412,6 +434,7 @@ define([
             var list = [];
             var keys = Object.keys(obj).slice(0,MAX_TEAMS_SLOTS);
             var slots = '('+Math.min(keys.length, MAX_TEAMS_SLOTS)+'/'+MAX_TEAMS_SLOTS+')';
+            var createSlots = canCreateTeams(obj);
             for (var i = keys.length; i < MAX_TEAMS_SLOTS; i++) {
                 obj[i] = {
                     empty: true
@@ -423,6 +446,7 @@ define([
 
             APP.teams = {};
 
+            var created = 0;
             keys.forEach(function (id) {
                 if (!obj[id].empty) {
                     APP.teams[id] = {
@@ -431,23 +455,40 @@ define([
                 }
 
                 var team = obj[id];
+
+                var createBtn;
+                var createCls = '';
+                if (team.empty && created < createSlots) {
+                    createBtn = h('div.cp-team-list-team-create', [
+                        h('i.fa.fa-plus-circle'),
+                        h('span', Messages.team_cat_create)
+                    ]);
+                    createCls = '.create';
+                    created++;
+                }
                 if (team.empty) {
-                    list.push(h('div.cp-team-list-team.empty', [
-                        h('span.cp-team-list-name.empty', Messages.team_listSlot)
-                    ]));
+                    var createTeamDiv = h('div.cp-team-list-team.empty'+createCls, [
+                        h('span.cp-team-list-name.empty', Messages.team_listSlot),
+                        createBtn
+                    ]);
+                    list.push(createTeamDiv);
+                    if (createCls) {
+                        $(createTeamDiv).click(function () {
+                            $('div.cp-team-cat-create').click();
+                        });
+                    }
                     return;
                 }
-                var btn;
                 var avatar = h('span.cp-avatar');
-                list.push(h('div.cp-team-list-team', [
+                var teamDiv = h('div.cp-team-list-team', [
                     h('span.cp-team-list-avatar', avatar),
                     h('span.cp-team-list-name', {
                         title: team.metadata.name
                     }, team.metadata.name),
-                    btn = h('button.cp-team-list-open.btn.btn-primary', Messages.team_listLoad)
-                ]));
+                ]);
+                list.push(teamDiv);
                 common.displayAvatar($(avatar), team.metadata.avatar, team.metadata.name);
-                $(btn).click(function () {
+                $(teamDiv).click(function () {
                     if (team.error) {
                         UI.warn(Messages.error); // FIXME better error message - roster bug, can't load the team for now
                         return;
@@ -506,9 +547,10 @@ define([
                 name: name
             }, function (obj) {
                 if (obj && obj.error) {
-                    if (obj.error === "OFFLINE") { return UI.alert(Messages.driveOfflineError); }
-                    console.error(obj.error);
                     $spinner.hide();
+                    state = false;
+                    if (obj.error === "OFFLINE") { return UI.warn(Messages.disconnected); }
+                    console.error(obj.error);
                     return void UI.warn(Messages.error);
                 }
                 // Redraw the create block
@@ -544,7 +586,7 @@ define([
             h('div.cp-app-drive-container', {tabindex:0}, [
                 h('div#cp-app-drive-tree'),
                 h('div#cp-app-drive-content-container', [
-                    h('div#cp-app-drive-connection-state', {style: "display: none;"}, Messages.disconnected),
+                    h('div#cp-app-drive-connection-state.cp-banner.cp-banner-danger', {style: "display: none;"}, Messages.disconnected),
                     h('div#cp-app-drive-content', {tabindex:2})
                 ])
             ])
@@ -672,7 +714,7 @@ define([
         // Status
         var status = h('span.cp-team-member-status'+(data.online ? '.online' : ''));
         // Actions
-        var actions = h('span.cp-team-member-actions');
+        var actions = h('span.cp-online.cp-team-member-actions');
         var $actions = $(actions);
         var isMe = me && me.curvePublic === data.curvePublic;
         var myRole = me ? (ROLES.indexOf(me.role) || 1) : -1;
@@ -838,7 +880,7 @@ define([
         // If you're an admin or an owner, you can invite your friends to the team
         // TODO and acquaintances later?
         if (me && (me.role === 'ADMIN' || me.role === 'OWNER')) {
-            var invite = h('button.btn.btn-primary', Messages.team_inviteButton);
+            var invite = h('button.cp-online.btn.btn-primary', Messages.team_inviteButton);
             var inviteFriends = common.getFriends();
             Object.keys(inviteFriends).forEach(function (curve) {
                 // Keep only friends that are not already in the team and that you can contact
@@ -860,7 +902,7 @@ define([
         }
 
         if (me && (me.role !== 'OWNER')) {
-            var leave = h('button.btn.btn-danger', Messages.team_leaveButton);
+            var leave = h('button.cp-online.btn.btn-danger', Messages.team_leaveButton);
             $(leave).click(function () {
                 UI.confirm(Messages.team_leaveConfirm, function (yes) {
                     if (!yes) { return; }
@@ -909,13 +951,20 @@ define([
         cb(content);
     });
 
-    makeBlock('chat', function (common, cb) {
+    makeBlock('offline', function (common, cb, $div) {
+        $div.addClass('cp-offline');
+        cb(h('div.cp-banner.cp-banner-danger', Messages.disconnected));
+    });
+
+    makeBlock('chat', function (common, cb, $div) {
+        $div.addClass('cp-online');
         var container = h('div#cp-app-contacts-container.cp-app-contacts-inapp');
         var content = [container];
         APP.module.execCommand('OPEN_TEAM_CHAT', {
             teamId: APP.team
         }, function (obj) {
             if (obj && obj.error) {
+                if (obj.error === 'OFFLINE') { return; }
                 return void UI.alert(Messages.error);
             }
             common.setTeamChat(obj.channel);
@@ -948,13 +997,13 @@ define([
         cb(content);
     });
 
-    makeBlock('name', function (common, cb) {
+    makeBlock('name', function (common, cb) { // Msg.team_nameHint, .team_nameTitle
         var $inputBlock = $('<div>', {'class': 'cp-sidebarlayout-input-block'});
         var $input = $('<input>', {
             'type': 'text',
             'id': 'cp-settings-displayname',
             'placeholder': Messages.anonymous}).appendTo($inputBlock);
-        var $save = $('<button>', {'class': 'btn btn-primary'}).text(Messages.settings_save).appendTo($inputBlock);
+        var $save = $('<button>', {'class': 'cp-online-alt btn btn-primary'}).text(Messages.settings_save).appendTo($inputBlock);
 
         var $ok = $('<span>', {'class': 'fa fa-check', title: Messages.saved}).hide();
         var $spinner = $('<span>', {'class': 'fa fa-spinner fa-pulse'}).hide();
@@ -967,12 +1016,20 @@ define([
                 teamId: APP.team
             }, function (obj) {
                 if (obj && obj.error) { return void UI.warn(Messages.error); }
+                var oldName = obj.name;
                 obj.name = newName;
                 APP.module.execCommand('SET_TEAM_METADATA', {
                     teamId: APP.team,
                     metadata: obj
-                }, function () {
+                }, function (res) {
                     $spinner.hide();
+                    if (res && res.error) {
+                        $input.val(oldName);
+                        if (res.error === 'OFFLINE') {
+                            return void UI.warn(Messages.disconnected);
+                        }
+                        return void UI.warn(Messages.error);
+                    }
                     $ok.show();
                 });
             });
@@ -999,7 +1056,7 @@ define([
         });
     }, true);
 
-    makeBlock('avatar', function (common, cb) {
+    makeBlock('avatar', function (common, cb) { // Msg.team_avatarHint, .team_avatarTitle
         // Upload
         var avatar = h('div.cp-team-avatar.cp-avatar');
         var $avatar = $(avatar);
@@ -1020,6 +1077,7 @@ define([
             });
         });
         var $upButton = common.createButton('upload', false, data);
+        $upButton.addClass('cp-online');
         $upButton.removeProp('title');
         $upButton.text(Messages.profile_upload);
         $upButton.prepend($('<span>', {'class': 'fa fa-upload'}));
@@ -1053,7 +1111,7 @@ define([
         });
     }, true);
 
-    makeBlock('export', function (common, cb) {
+    makeBlock('export', function (common, cb) { // Msg.team_exportHint, .team_exportTitle
         // Backup all the pads
         var sframeChan = common.getSframeChannel();
         var privateData = common.getMetadataMgr().getPrivateData();
@@ -1095,7 +1153,8 @@ define([
         cb(button);
     }, true);
 
-    makeBlock('delete', function (common, cb) {
+    makeBlock('delete', function (common, cb, $div) { // Msg.team_deleteHint, .team_deleteTitle
+        $div.addClass('cp-online');
         var deleteTeam = h('button.btn.btn-danger', Messages.team_deleteButton);
         var $ok = $('<span>', {'class': 'fa fa-check', title: Messages.saved}).hide();
         var $spinner = $('<span>', {'class': 'fa fa-spinner fa-pulse'}).hide();
@@ -1432,7 +1491,7 @@ define([
                 delete mainCategories.create;
             }
 
-            $('body').css('display', '');
+            var $body = APP.$body = $('body').css('display', '');
             loadMain(common);
 
             metadataMgr.onChange(function () {
@@ -1459,6 +1518,7 @@ define([
             var onDisconnect = function (teamId) {
                 if (APP.team && teamId && APP.team !== teamId) { return; }
                 setEditable(false);
+                $body.addClass('cp-app-team-offline');
                 if (APP.team && driveAPP.refresh) { driveAPP.refresh(); }
                 toolbar.failed();
                 UIElements.disconnectAlert();
@@ -1466,6 +1526,7 @@ define([
             var onReconnect = function (teamId) {
                 if (APP.team && teamId && APP.team !== teamId) { return; }
                 setEditable(true);
+                $body.removeClass('cp-app-team-offline');
                 if (APP.team && driveAPP.refresh) { driveAPP.refresh(); }
                 toolbar.reconnecting();
                 UIElements.reconnectAlert();

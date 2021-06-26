@@ -45,8 +45,16 @@ module.exports = {
  *  In such a case this should be also handled by NGINX, as documented in
  *  cryptpad/docs/example.nginx.conf (see the $main_domain variable)
  *
+ *  Note: you may provide multiple origins for the purpose of accessing
+ *  a development instance via different URLs, like so:
+ *  httpUnsafeOrigin: 'http://127.0.0.1:3000/ http://localhost:3000/',
+ *
+ *  Such configuration is not recommended for production instances,
+ *  as the development team does not actively test such configuration
+ *  and it may have unintended consequences in practice.
+ *
  */
-    httpUnsafeOrigin: 'http://localhost:3000/',
+    httpUnsafeOrigin: 'http://localhost:3000',
 
 /*  httpSafeOrigin is the URL that is used for the 'sandbox' described above.
  *  If you're testing or developing with CryptPad on your local machine then
@@ -114,55 +122,6 @@ module.exports = {
     ],
 */
 
-    /*  CryptPad's administration panel includes a "support" tab
-     *  wherein administrators with a secret key can view messages
-     *  sent from users via the encrypted forms on the /support/ page
-     *
-     *  To enable this functionality:
-     *    run `node ./scripts/generate-admin-keys.js`
-     *    save the public key in your config in the value below
-     *    add the private key via the admin panel
-     *    and back it up in a secure manner
-     *
-     */
-    // supportMailboxPublicKey: "",
-
-    /*  We're very proud that CryptPad is available to the public as free software!
-     *  We do, however, still need to pay our bills as we develop the platform.
-     *
-     *  By default CryptPad will prompt users to consider donating to
-     *  our OpenCollective campaign. We publish the state of our finances periodically
-     *  so you can decide for yourself whether our expenses are reasonable.
-     *
-     *  You can disable any solicitations for donations by setting 'removeDonateButton' to true,
-     *  but we'd appreciate it if you didn't!
-     */
-    //removeDonateButton: false,
-
-    /*  CryptPad will display a point of contact for your instance on its contact page
-     *  (/contact.html) if you provide it below.
-     */
-    adminEmail: 'i.did.not.read.my.config@cryptpad.fr',
-
-    /*
-     *  By default, CryptPad contacts one of our servers once a day.
-     *  This check-in will also send some very basic information about your instance including its
-     *  version and the adminEmail so we can reach you if we are aware of a serious problem.
-     *  We will never sell it or send you marketing mail.
-     *
-     *  If you want to block this check-in and remain set 'blockDailyCheck' to true.
-     */
-    //blockDailyCheck: false,
-
-    /*
-     *  By default users get 50MB of storage by registering on an instance.
-     *  You can set this value to whatever you want.
-     *
-     *  hint: 50MB is 50 * 1024 * 1024
-     */
-    //defaultStorageLimit: 50 * 1024 * 1024,
-
-
     /* =====================
      *        STORAGE
      * ===================== */
@@ -218,29 +177,6 @@ module.exports = {
      */
     //maxUploadSize: 20 * 1024 * 1024,
 
-    /*
-     *  CryptPad allows administrators to give custom limits to their friends.
-     *  add an entry for each friend, identified by their user id,
-     *  which can be found on the settings page. Include a 'limit' (number of bytes),
-     *  a 'plan' (string), and a 'note' (string).
-     *
-     *  hint: 1GB is 1024 * 1024 * 1024 bytes
-     */
-/*
-    customLimits: {
-        "[cryptpad-user1@my.awesome.website/YZgXQxKR0Rcb6r6CmxHPdAGLVludrAF2lEnkbx1vVOo=]": {
-            limit: 20 * 1024 * 1024 * 1024,
-            plan: 'insider',
-            note: 'storage space donated by my.awesome.website'
-        },
-        "[cryptpad-user2@my.awesome.website/GdflkgdlkjeworijfkldfsdflkjeEAsdlEnkbx1vVOo=]": {
-            limit: 10 * 1024 * 1024 * 1024,
-            plan: 'insider',
-            note: 'storage space donated by my.awesome.website'
-        }
-    },
-*/
-
     /*  Users with premium accounts (those with a plan included in their customLimit)
      *  can benefit from an increased upload size limit. By default they are restricted to the same
      *  upload size as any other registered user.
@@ -294,6 +230,8 @@ module.exports = {
      *  fully uploaded. Set its location here.
      */
     blobStagingPath: './data/blobstage',
+
+    decreePath: './data/decrees',
 
     /* CryptPad supports logging events directly to the disk in a 'logs' directory
      * Set its location here, or set it to false (or nothing) if you'd rather not log

@@ -67,7 +67,19 @@ define([
                 Cryptpad.mergeAnonDrive(cb);
             });
             sframeChan.on('Q_SETTINGS_DELETE_ACCOUNT', function (data, cb) {
-                Cryptpad.deleteAccount(cb);
+                Cryptpad.deleteAccount(data, cb);
+            });
+            sframeChan.on('Q_COLORTHEME_CHANGE', function (data, cb) {
+                localStorage['CRYPTPAD_STORE|colortheme'] = data.theme;
+                if (data.flush && window.CryptPad_flushCache) {
+                    window.CryptPad_flushCache();
+                    window.location.reload();
+                    return;
+                }
+                cb();
+            });
+            sframeChan.on('Q_SET_DRIVE_REDIRECT_PREFERENCE', function (data, cb) {
+                Cryptpad.setDriveRedirectPreference(data, cb);
             });
         };
         var category;

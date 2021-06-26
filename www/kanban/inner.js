@@ -30,10 +30,6 @@ define([
     'css!/bower_components/codemirror/lib/codemirror.css',
     'css!/bower_components/codemirror/addon/dialog/dialog.css',
     'css!/bower_components/codemirror/addon/fold/foldgutter.css',
-
-
-
-    'css!/kanban/jkanban.css',
     'less!/kanban/app-kanban.less'
 ], function (
     $,
@@ -134,6 +130,24 @@ define([
     };
 
     var addEditItemButton = function () {};
+
+    var now = function () { return +new Date(); };
+    var _lastUpdate = 0;
+    var _updateBoards = function (framework, kanban, boards) {
+        _lastUpdate = now();
+        kanban.setBoards(Util.clone(boards));
+        kanban.inEditMode = false;
+        addEditItemButton(framework, kanban);
+    };
+    var _updateBoardsThrottle = Util.throttle(_updateBoards, 1000);
+    var updateBoards = function (framework, kanban, boards) {
+        if ((now() - _lastUpdate) > 5000 || framework.isLocked()) {
+            _updateBoards(framework, kanban, boards);
+            return;
+        }
+        _updateBoardsThrottle(framework, kanban, boards);
+    };
+
     var onRemoteChange = Util.mkEvent();
     var editModal;
     var PROPERTIES = ['title', 'body', 'tags', 'color'];
@@ -146,10 +160,9 @@ define([
         var isBoard, id;
         var offline = false;
 
-        var update = Util.throttle(function () {
-            kanban.setBoards(kanban.options.boards);
-            addEditItemButton(framework, kanban);
-        }, 400);
+        var update = function () {
+            updateBoards(framework, kanban, kanban.options.boards);
+        };
 
         var commit = function () {
             framework.localChange();
@@ -228,7 +241,12 @@ define([
             e.stopPropagation();
         });
         var common = framework._.sfCommon;
-        var markdownTb = common.createMarkdownToolbar(editor);
+        var markdownTb = common.createMarkdownToolbar(editor, {
+            embed: function (mt) {
+                editor.focus();
+                editor.replaceSelection($(mt)[0].outerHTML);
+            }
+        });
         $(text).before(markdownTb.toolbar);
         $(markdownTb.toolbar).show();
         editor.refresh();
@@ -249,6 +267,7 @@ define([
                 editor.refresh();
             }
         };
+        cm.configureTheme(common, function () {});
         SFCodeMirror.mkIndentSettings(editor, framework._.cpNfInner.metadataMgr);
         editor.on('change', function () {
             var val = editor.getValue();
@@ -399,7 +418,9 @@ define([
         framework.onEditableChange(function (unlocked) {
             editor.setOption('readOnly', !unlocked);
             $title.prop('disabled', unlocked ? '' : 'disabled');
-            $(_field.element).tokenfield(unlocked ? 'enable' : 'disable');
+            if (_field) {
+                $(_field.element).tokenfield(unlocked ? 'enable' : 'disable');
+            }
 
             $modal.find('nav button.danger').prop('disabled', unlocked ? '' : 'disabled');
             offline = !unlocked;
@@ -616,7 +637,7 @@ define([
             gutter: '5px',
             widthBoard: '300px',
             buttonContent: '❌',
-            readOnly: framework.isReadOnly(),
+            readOnly: framework.isReadOnly() || framework.isLocked(),
             tagsAnd: _tagsAnd,
             refresh: function () {
                 onRedraw.fire();
@@ -830,7 +851,8 @@ define([
             openLink: openLink,
             getTags: getExistingTags,
             cursors: remoteCursors,
-            boards: boards
+            boards: boards,
+            _boards: Util.clone(boards),
         });
 
         framework._.cpNfInner.metadataMgr.onChange(function () {
@@ -841,7 +863,7 @@ define([
             // If the rendering has changed, update the value and redraw
             kanban.options.tagsAnd = tagsAnd;
             _tagsAnd = tagsAnd;
-            kanban.setBoards(kanban.options.boards);
+            updateBoards(framework, kanban, kanban.options.boards);
         });
 
         if (migrated) { framework.localChange(); }
@@ -849,7 +871,7 @@ define([
         var addBoardDefault = document.getElementById('kanban-addboard');
         $(addBoardDefault).attr('title', Messages.kanban_addBoard);
         addBoardDefault.addEventListener('click', function () {
-            if (framework.isReadOnly()) { return; }
+            if (framework.isReadOnly() || framework.isLocked()) { return; }
             /*var counter = 1;
 
             // Get the new board id
@@ -1031,16 +1053,15 @@ define([
             mkHelpMenu(framework);
         }
 
-        if (framework.isReadOnly()) {
+        if (framework.isReadOnly() || framework.isLocked()) {
             $container.addClass('cp-app-readonly');
-        } else {
-            framework.setFileImporter({}, function (content /*, file */) {
-                var parsed;
-                try { parsed = JSON.parse(content); }
-                catch (e) { return void console.error(e); }
-                return { content: parsed };
-            });
         }
+        framework.setFileImporter({accept: ['.json', 'application/json']}, function (content /*, file */) {
+            var parsed;
+            try { parsed = JSON.parse(content); }
+            catch (e) { return void console.error(e); }
+            return { content: parsed };
+        });
 
         framework.setFileExporter('.json', function () {
             return new Blob([JSON.stringify(kanban.getBoardsJSON(), 0, 2)], {
@@ -1166,9 +1187,8 @@ define([
             if (Sortify(currentContent) !== Sortify(remoteContent)) {
                 var cursor = getCursor();
                 verbose("Content is different.. Applying content");
-                kanban.setBoards(remoteContent);
-                kanban.inEditMode = false;
-                addEditItemButton(framework, kanban);
+                kanban.options.boards = remoteContent;
+                updateBoards(framework, kanban, remoteContent);
                 restoreCursor(cursor);
                 onRemoteChange.fire();
             }
@@ -1190,8 +1210,17 @@ define([
             var items = boards.items || {};
             var data = boards.data || {};
             var list = boards.list || [];
+
+            // Remove duplicate boards
+            list = boards.list = Util.deduplicateString(list);
+
             Object.keys(data).forEach(function (id) {
-                if (list.indexOf(Number(id)) === -1) { delete data[id]; }
+                if (list.indexOf(Number(id)) === -1) {
+                    list.push(Number(id));
+                }
+                // Remove duplicate items
+                var b = data[id];
+                b.item = Util.deduplicateString(b.item || []);
             });
             Object.keys(items).forEach(function (eid) {
                 var exists = Object.keys(data).some(function (id) {
@@ -1219,6 +1248,16 @@ define([
         });
         framework.onCursorUpdate(function (data) {
             if (!data) { return; }
+            if (data.reset) {
+                Object.keys(remoteCursors).forEach(function (id) {
+                    if (remoteCursors[id].clear) {
+                        remoteCursors[id].clear();
+                    }
+                    delete remoteCursors[id];
+                });
+                return;
+            }
+
             var id = data.id;
 
             // Clear existing cursor

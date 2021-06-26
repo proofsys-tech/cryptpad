@@ -33,7 +33,7 @@ define([
         var metadataMgr = common.getMetadataMgr();
         var sframeChan = common.getSframeChannel();
         var $body = $('body');
-    var displayed;
+        var displayed;
 
         var hideIframe = function () {
             if (!displayed) { return; }
@@ -58,6 +58,7 @@ define([
                     hashes: data.hashes || priv.hashes,
                     common: common,
                     title: data.title,
+                    auditorHash: data.auditorHash,
                     versionHash: data.versionHash,
                     friends: friends,
                     onClose: function () {
@@ -89,9 +90,10 @@ define([
         };
 
         // Access modal
-        create['access'] = function () {
+        create['access'] = function (data) {
             require(['/common/inner/access.js'], function (Access) {
                 Access.getAccessModal(common, {
+                    title: data.title,
                     onClose: function () {
                         hideIframe();
                     }

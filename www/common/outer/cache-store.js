@@ -2,7 +2,7 @@ define([
     '/common/common-util.js',
     '/bower_components/localforage/dist/localforage.min.js',
 ], function (Util, localForage) {
-    var S = {};
+    var S = window.CryptPad_Cache = {};
     var onReady = Util.mkEvent(true);
 
     // Check if indexedDB is allowed
@@ -49,7 +49,10 @@ define([
                 }
                 cb(null, obj.c);
                 obj.t = +new Date();
-                cache.setItem(id, obj);
+                cache.setItem(id, obj, function (err) {
+                    if (!err) { return; }
+                    console.error(err);
+                });
             });
         });
     };
@@ -81,7 +84,10 @@ define([
                 }
                 cb(null, obj);
                 obj.t = +new Date();
-                cache.setItem(id, obj);
+                cache.setItem(id, obj, function (err) {
+                    if (!err) { return; }
+                    console.error(err);
+                });
             });
         });
     };

@@ -50,10 +50,7 @@ $(function () {
             } else if (/^\/login\//.test(pathname)) {
                 require([ '/login/main.js' ], function () {});
             } else if (/^\/($|^\/index\.html$)/.test(pathname)) {
-                // TODO use different top bar
                 require([ '/customize/main.js', ], function () {});
-            } else if (/invite/.test(pathname)) {
-                require([ '/invite/main.js'], function () {});
             } else {
                 require([ '/customize/main.js', ], function () {});
             }

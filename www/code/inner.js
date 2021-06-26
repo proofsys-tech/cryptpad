@@ -152,7 +152,7 @@ define([
         var $codeMirror = $('.CodeMirror');
 
         $('<img>', {
-            src: '/customize/CryptPad_logo.svg',
+            src: '/customize/CryptPad_logo_grey.svg',
             alt: '',
             class: 'cp-app-code-preview-empty'
         }).appendTo($previewContainer);
@@ -257,8 +257,8 @@ define([
                 'class': 'cp-splitter'
             }).appendTo($previewContainer);
 
-            $preview.on('scroll', function() {
-                splitter.css('top', $preview.scrollTop() + 'px');
+            $previewContainer.on('scroll', function() {
+                splitter.css('top', $previewContainer.scrollTop() + 'px');
             });
 
             var $target = $codeMirrorContainer;

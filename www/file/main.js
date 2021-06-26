@@ -15,10 +15,11 @@ define([
         href = obj.href;
         hash = obj.hash;
     }).nThen(function (/*waitFor*/) {
-        var addData = function (meta, Cryptpad) {
-            meta.filehash = Cryptpad.currentPad.hash;
+        var addData = function (meta, Cryptpad, user, Utils) {
+            meta.filehash = Utils.currentPad.hash;
         };
         SFCommonO.start({
+            cache: true,
             hash: hash,
             href: href,
             noRealtime: true,
